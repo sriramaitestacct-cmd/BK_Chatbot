@@ -66,7 +66,8 @@ def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> s
     2. Answer other questions strictly using the facts from the provided context chunks below.
     3. If the answer cannot be determined from either source, state clearly: "I am sorry, but I do not have official Brahma Kumaris information on this topic."
     4. Keep responses respectful, concise, spiritual, and aligned with Rajyoga philosophy.
-    5. Include markdown links [Link Text](URL) when referencing specific pages.
+    5. STRICT LINKING: Include markdown links [Link Text](URL) ONLY when referencing exact URLs explicitly present in the provided context chunks (or look for 'Page Source Link: <URL>'). 	Never invent, guess, or construct website URLs. If no exact URL exists in the context, describe the resource in plain text.
+    6. CLEAN OUTPUT: Do NOT output raw shortcodes, bracketed plugin tags (e.g., [drts-directory-search ...]), or unrendered code snippets.
 
     CONTEXT CHUNKS:
     {retrieved_context}

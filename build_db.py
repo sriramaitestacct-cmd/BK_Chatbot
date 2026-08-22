@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import pandas as pd
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
@@ -15,11 +16,17 @@ PLATFORM_REPORT_CSV = "platform_split_report.csv"
 DB_DIR = "./chroma_db_bk"
 CACHE_FILE = "cached_pages.json"
 
+def clean_wordpress_shortcodes(text: str) -> str:
+    """Removes WordPress shortcodes like [drts-directory-search ...] from text."""
+    # Matches patterns like [shortcode_name key="value"] or [shortcode]
+    clean_text = re.sub(r'\[[a-zA-Z0-9_\-]+(?:\s+[^\]]+)?\]', '', text)
+    # Remove leftover multiple spaces or empty lines
+    return re.sub(r'\n\s*\n', '\n\n', clean_text).strip()
+
 def get_clean_primary_urls():
     """Reads sitemap CSVs and excludes duplicate/redirect URLs."""
     urls = set()
     
-    # 1. Load base primary URLs from platform split report
     if os.path.exists(PLATFORM_REPORT_CSV):
         df_platform = pd.read_csv(PLATFORM_REPORT_CSV)
         if "URL" in df_platform.columns:
@@ -28,7 +35,6 @@ def get_clean_primary_urls():
     else:
         print(f"⚠️ Warning: '{PLATFORM_REPORT_CSV}' not found.")
 
-    # 2. Filter out flagged duplicate URLs
     if os.path.exists(DUPLICATE_REPORT_CSV):
         df_dup = pd.read_csv(DUPLICATE_REPORT_CSV)
         target_col = "Duplicate Page (REMOVE / 301 REDIRECT)"
@@ -76,6 +82,10 @@ def scrape_pages_with_cache(urls):
                         elem.extract()
 
                     clean_text = "\n".join([line.strip() for line in soup.get_text(separator="\n").splitlines() if line.strip()])
+                    
+                    # Clean out WordPress shortcodes immediately after extraction
+                    clean_text = clean_wordpress_shortcodes(clean_text)
+
                     if len(clean_text) > 150:
                         pages_data[url] = clean_text
                 except Exception as e:
@@ -87,11 +97,16 @@ def scrape_pages_with_cache(urls):
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(pages_data, f, ensure_ascii=False, indent=2)
 
-    # Convert dictionary into LangChain Document instances
+    # Convert dictionary into LangChain Document instances with explicitly attached URLs
     documents = []
     for url in urls:
         if url in pages_data:
-            documents.append(Document(page_content=pages_data[url], metadata={"source": url}))
+            # Clean cached content to purge any shortcodes if cache was built earlier
+            content = clean_wordpress_shortcodes(pages_data[url])
+            
+            # Prepend exact source URL directly to the document text
+            formatted_content = f"Page Source Link: {url}\n\n{content}"
+            documents.append(Document(page_content=formatted_content, metadata={"source": url}))
             
     return documents
 
@@ -101,28 +116,23 @@ def build_full_clean_vector_db():
         print("❌ No valid URLs found. Make sure your report CSV files are in the folder.")
         return
 
-    # 1. Load document content (Reads from cached_pages.json instantly)
     documents = scrape_pages_with_cache(target_urls)
     print(f"\n1. Loaded {len(documents)} clean primary page documents.")
 
-    # 2. Chunk documents for vector search
     print("2. Chunking text content...")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
     chunks = text_splitter.split_documents(documents)
     print(f"   Generated {len(chunks)} searchable chunks.")
 
-    # 3. Create Chroma Vector Database
     print("3. Generating embeddings & saving ChromaDB locally...")
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-    # Safely handle existing directory
     if os.path.exists(DB_DIR):
         try:
             import shutil
             shutil.rmtree(DB_DIR)
         except Exception as e:
             print(f"⚠️ Could not automatically delete '{DB_DIR}': {e}")
-            print("Writing directly into vector store...")
 
     Chroma.from_documents(
         documents=chunks,

@@ -25,7 +25,7 @@ GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", "")
 @st.cache_resource
 def load_vector_db():
     # Replace all-MiniLM-L6-v2 with a multilingual transformer
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     return Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
 
 try:
@@ -33,7 +33,6 @@ try:
 except Exception as e:
     st.error(f"Error loading vector database: {e}. Please ensure build_db.py has finished executing.")
     st.stop()
-
 # ---------------------------------------------------------
 # SYSTEM KNOWLEDGE BASE (Guaranteed Accurate Core Facts)
 # ---------------------------------------------------------

@@ -1,0 +1,7 @@
+Groq API Key--BK Chatbot
+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
+Groq API key- BK_Pilot Test
+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
+
+ngrok api key
+3IGFWm6dtJ5ulByhv0ShszRfNFB_58WbktzZAwdmEJqY1z8KA

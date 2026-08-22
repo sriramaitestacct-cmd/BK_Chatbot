@@ -125,7 +125,8 @@ def build_full_clean_vector_db():
     print(f"   Generated {len(chunks)} searchable chunks.")
 
     print("3. Generating embeddings & saving ChromaDB locally...")
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Updated to Multilingual Model
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     if os.path.exists(DB_DIR):
         try:

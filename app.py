@@ -24,7 +24,8 @@ GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", "")
 # Initialize Embeddings & Vector DB
 @st.cache_resource
 def load_vector_db():
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Replace all-MiniLM-L6-v2 with a multilingual transformer
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     return Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
 
 try:

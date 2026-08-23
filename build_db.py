@@ -1,6 +1,10 @@
 import json
 import os
 import re
+import time
+import gc
+import urllib.parse
+import urllib.request
 import pandas as pd
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
@@ -18,13 +22,37 @@ CACHE_FILE = "cached_pages.json"
 
 def clean_wordpress_shortcodes(text: str) -> str:
     """Removes WordPress shortcodes like [drts-directory-search ...] from text."""
-    # Matches patterns like [shortcode_name key="value"] or [shortcode]
     clean_text = re.sub(r'\[[a-zA-Z0-9_\-]+(?:\s+[^\]]+)?\]', '', text)
-    # Remove leftover multiple spaces or empty lines
     return re.sub(r'\n\s*\n', '\n\n', clean_text).strip()
 
+def direct_google_translate(text: str) -> str:
+    """Translates text via direct HTTP request to avoid external package locks."""
+    try:
+        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=" + urllib.parse.quote(text)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return "".join([sentence[0] for sentence in result[0] if sentence[0]])
+    except Exception:
+        return text
+
+def translate_if_hindi(text: str) -> str:
+    """Detects Devanagari Hindi text and safely translates it in chunks."""
+    if any('\u0900' <= char <= '\u097F' for char in text):
+        time.sleep(0.3)  # Gentle delay to prevent IP block
+        if len(text) > 1500:
+            blocks = [text[i:i+1500] for i in range(0, len(text), 1500)]
+            translated_blocks = []
+            for b in blocks:
+                translated_blocks.append(direct_google_translate(b))
+                time.sleep(0.2)
+            return " ".join(translated_blocks)
+        else:
+            return direct_google_translate(text)
+    return text
+
 def get_clean_primary_urls():
-    """Reads sitemap CSVs and excludes duplicate/redirect URLs."""
+    """Reads sitemap CSVs, excludes duplicates, and explicitly appends the main BK One portal."""
     urls = set()
     
     if os.path.exists(PLATFORM_REPORT_CSV):
@@ -32,8 +60,6 @@ def get_clean_primary_urls():
         if "URL" in df_platform.columns:
             urls.update(df_platform["URL"].dropna().tolist())
             print(f"-> Loaded {len(urls)} URLs from '{PLATFORM_REPORT_CSV}'.")
-    else:
-        print(f"⚠️ Warning: '{PLATFORM_REPORT_CSV}' not found.")
 
     if os.path.exists(DUPLICATE_REPORT_CSV):
         df_dup = pd.read_csv(DUPLICATE_REPORT_CSV)
@@ -43,6 +69,11 @@ def get_clean_primary_urls():
             before_count = len(urls)
             urls = urls - remove_urls
             print(f"-> Excluded {before_count - len(urls)} duplicate URLs using '{DUPLICATE_REPORT_CSV}'.")
+
+    # Explicitly include the BK One main landing portal
+    bkone_url = "https://www.brahmakumaris.com/bkone"
+    urls.add(bkone_url)
+    print(f"-> Explicitly added landing page: {bkone_url}")
 
     clean_urls = list(urls)
     print(f"-> Total Clean Primary URLs to Index: {len(clean_urls)}")
@@ -70,20 +101,16 @@ def scrape_pages_with_cache(urls):
                     page.goto(url, wait_until="networkidle", timeout=30000)
                     soup = BeautifulSoup(page.content(), 'html.parser')
 
-                    # Preserve links in Markdown format [Text](URL)
                     for a in soup.find_all('a', href=True):
                         link_text = a.get_text(strip=True)
                         link_url = urljoin(url, a['href'])
                         if link_text and not a['href'].startswith("#"):
                             a.replace_with(f" [{link_text}]({link_url}) ")
 
-                    # Strip layout noise
                     for elem in soup(["script", "style", "nav", "footer", "header", "svg"]):
                         elem.extract()
 
                     clean_text = "\n".join([line.strip() for line in soup.get_text(separator="\n").splitlines() if line.strip()])
-                    
-                    # Clean out WordPress shortcodes immediately after extraction
                     clean_text = clean_wordpress_shortcodes(clean_text)
 
                     if len(clean_text) > 150:
@@ -93,47 +120,71 @@ def scrape_pages_with_cache(urls):
 
             browser.close()
 
-        # Update cache on disk
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(pages_data, f, ensure_ascii=False, indent=2)
 
-    # Convert dictionary into LangChain Document instances with explicitly attached URLs
     documents = []
-    for url in urls:
+    print("-> Processing and translating content into English vector chunks...")
+    cache_updated = False
+
+    for idx, url in enumerate(urls, 1):
         if url in pages_data:
-            # Clean cached content to purge any shortcodes if cache was built earlier
             content = clean_wordpress_shortcodes(pages_data[url])
             
-            # Prepend exact source URL directly to the document text
-            formatted_content = f"Page Source Link: {url}\n\n{content}"
-            documents.append(Document(page_content=formatted_content, metadata={"source": url}))
+            # Check for Hindi & translate
+            english_content = translate_if_hindi(content)
             
+            # Save translated version back into cache object if it changed
+            if english_content != content:
+                pages_data[url] = english_content
+                cache_updated = True
+            
+            url_keywords = url.split('/')[-2].replace('-', ' ') if '/' in url else ""
+            formatted_content = f"Page Source Link: {url}\nURL Topic Terms: {url_keywords}\n\n{english_content}"
+            documents.append(Document(page_content=formatted_content, metadata={"source": url}))
+
+    # Save cached translations to file so future runs skip translation completely
+    if cache_updated:
+        print("-> Saving newly translated text back to 'cached_pages.json' for instant future runs...")
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(pages_data, f, ensure_ascii=False, indent=2)
+
     return documents
+
+def remove_directory_safely(dir_path):
+    """Safely removes Chroma database directory by freeing locks."""
+    if os.path.exists(dir_path):
+        gc.collect()
+        time.sleep(1)
+        
+        for attempt in range(3):
+            try:
+                import shutil
+                shutil.rmtree(dir_path)
+                print(f"-> Cleared previous database at '{dir_path}'.")
+                break
+            except Exception:
+                time.sleep(1)
 
 def build_full_clean_vector_db():
     target_urls = get_clean_primary_urls()
     if not target_urls:
-        print("❌ No valid URLs found. Make sure your report CSV files are in the folder.")
+        print("❌ No valid URLs found.")
         return
 
     documents = scrape_pages_with_cache(target_urls)
     print(f"\n1. Loaded {len(documents)} clean primary page documents.")
 
     print("2. Chunking text content...")
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
+    # Optimized chunk size to keep SQLite file well below GitHub's 100MB limit
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
     chunks = text_splitter.split_documents(documents)
     print(f"   Generated {len(chunks)} searchable chunks.")
 
     print("3. Generating embeddings & saving ChromaDB locally...")
-    # Updated to Multilingual Model
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
-    if os.path.exists(DB_DIR):
-        try:
-            import shutil
-            shutil.rmtree(DB_DIR)
-        except Exception as e:
-            print(f"⚠️ Could not automatically delete '{DB_DIR}': {e}")
+    remove_directory_safely(DB_DIR)
 
     Chroma.from_documents(
         documents=chunks,

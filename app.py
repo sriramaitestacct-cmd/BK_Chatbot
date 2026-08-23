@@ -18,13 +18,11 @@ MODEL_NAME = "openai/gpt-oss-20b"
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
 
 # Initialize Groq API Key
-# Fetches key safely from Streamlit Cloud Secrets (or local environment)
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
 
 # Initialize Embeddings & Vector DB
 @st.cache_resource
 def load_vector_db():
-    # Replace all-MiniLM-L6-v2 with a multilingual transformer
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     return Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
 
@@ -33,9 +31,8 @@ try:
 except Exception as e:
     st.error(f"Error loading vector database: {e}. Please ensure build_db.py has finished executing.")
     st.stop()
-# ---------------------------------------------------------
-# SYSTEM KNOWLEDGE BASE (Guaranteed Accurate Core Facts)
-# ---------------------------------------------------------
+
+# SYSTEM KNOWLEDGE BASE
 CORE_ORGANIZATION_FACTS = """
 OFFICIAL BRAHMA KUMARIS CORE STATISTICS:
 - Regular Students: 10 Lacs+ (1 Million+)
@@ -46,63 +43,76 @@ OFFICIAL BRAHMA KUMARIS CORE STATISTICS:
 - Primary Practice: Rajyoga Meditation
 """
 
-# ---------------------------------------------------------
-# RESPONSE CACHING DECORATOR
-# ---------------------------------------------------------
-@st.cache_data(ttl=86400, max_entries=1000)
-def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> str:
-    """Queries Groq LLM with context. Cached for 24 hours to prevent duplicate API charges."""
+def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -> str:
+    """Queries Groq LLM with context, conversation history, and strict behavior rules."""
     client = Groq(api_key=api_key)
     
     system_prompt = f"""
     You are the official Brahma Kumaris AI Assistant.
-    Your sole task is to answer user queries accurately based strictly on the official Brahma Kumaris knowledge provided below.
 
     GUARANTEED CORE FACTS:
     {CORE_ORGANIZATION_FACTS}
 
-    RULES:
-    1. Prefer the GUARANTEED CORE FACTS above for core statistical queries (student count, center count, retreat centers, country count).
-    2. Answer other questions strictly using the facts from the provided context chunks below.
-    3. If the answer cannot be determined from either source, state clearly: "I am sorry, but I do not have official Brahma Kumaris information on this topic."
-    4. Keep responses respectful, concise, spiritual, and aligned with Rajyoga philosophy.
-    5. STRICT LINKING: Include markdown links [Link Text](URL) ONLY when referencing exact URLs explicitly present in the provided context chunks (or look for 'Page Source Link: <URL>'). 	Never invent, guess, or construct website URLs. If no exact URL exists in the context, describe the resource in plain text.
-    6. CLEAN OUTPUT: Do NOT output raw shortcodes, bracketed plugin tags (e.g., [drts-directory-search ...]), or unrendered code snippets.
+    CRITICAL RULES:
+    1. STRICT DOMAIN BOUNDARY: Answer ONLY questions related to Brahma Kumaris teachings, Rajyoga meditation, spiritual philosophy, centers, and courses.
+    2. REJECT NON-SPIRITUAL OR OUT-OF-SCOPE QUERIES: Do NOT solve math expressions (e.g. "16÷2-8..."), code snippets, or general trivia. Politely decline using this exact standard message and DO NOT ask any follow-up questions:
+       "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
+    3. SPIRITUAL CONCEPT EQUIVALENCE: Recognize that Brahmalok, Shanti Dham, Paramdham, Nirvan Dham, and Mool Vatan all refer to the Incorporeal Soul World. Use provided context to explain these terms.
+    4. BK ONE PORTAL ROUTING: For queries regarding Daily Murli, Avyakt Murlis, BK Audio, BK Tube, Books, Purusharth Charts, or internal student applications, provide a helpful general overview and direct the user to [BK One Portal](https://www.brahmakumaris.com/bkone).
+    5. CONVERSATIONAL CLOSING: ONLY when giving a valid spiritual response, end with a warm follow-up question inviting further spiritual discussion. NEVER append a follow-up question if you are giving a fallback/rejection message.
+    6. ACCURATE LINKING: Include markdown links [Link Text](URL) ONLY when referencing exact URLs explicitly present in the provided context chunks (or look for 'Page Source Link: <URL>'). Never invent or construct URLs.
+    7. CLEAN OUTPUT: Do NOT output raw shortcodes, bracketed plugin tags (e.g. [drts-directory-search ...]), or code blocks.
 
     CONTEXT CHUNKS:
     {retrieved_context}
     """
 
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Append up to last 4 messages for context (excludes system initial prompt)
+    for msg in chat_history[-4:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
     completion = client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_query}
-        ],
+        messages=messages,
         temperature=0.2
     )
     return completion.choices[0].message.content
 
+def is_fallback_response(text: str) -> bool:
+    """Detects standard guardrail or fallback statements in LLM response."""
+    fallback_signatures = [
+        "designed specifically to assist",
+        "do not have information",
+        "don't have information",
+        "couldn't find relevant information",
+        "how may i assist you with those topics"
+    ]
+    lower_text = text.lower()
+    return any(sig in lower_text for sig in fallback_signatures)
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Om Shanti. How may I assist you with Brahma Kumaris knowledge today?"}
+        {"role": "assistant", "content": "Om Shanti. How may I assist you with Brahma Kumaris knowledge today?", "sources": []}
     ]
 
 # Display Existing Chat History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg.get("sources"):
+            with st.expander("📍 View Retrieved Source URLs"):
+                for src in msg["sources"]:
+                    st.markdown(f"- [{src}]({src})")
 
 # User Query Processing
 if user_prompt := st.chat_input("Ask a question..."):
-    # Display user input
-    st.session_state.messages.append({"role": "user", "content": user_prompt})
+    st.session_state.messages.append({"role": "user", "content": user_prompt, "sources": []})
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
-    # Process response
     with st.chat_message("assistant"):
         with st.spinner("Searching official BK knowledge base..."):
             
@@ -119,16 +129,23 @@ if user_prompt := st.chat_input("Ask a question..."):
             
             combined_context = "\n\n---\n\n".join(context_blocks)
 
-            # Query Groq LLM using retrieved context
-            response_text = get_llm_response(user_prompt, combined_context, GROQ_API_KEY)
+            # Query Groq LLM with chat history
+            response_text = get_llm_response(st.session_state.messages, combined_context, GROQ_API_KEY)
 
-            # Display Output & Sources
+            # Display Output
             st.markdown(response_text)
             
-            if sources:
+            # Only show sources if response is valid and NOT a fallback refusal
+            valid_sources = []
+            if sources and not is_fallback_response(response_text):
+                valid_sources = list(sources)
                 with st.expander("📍 View Retrieved Source URLs"):
-                    for src in sources:
+                    for src in valid_sources:
                         st.markdown(f"- [{src}]({src})")
 
-    # Store assistant response in session state
-    st.session_state.messages.append({"role": "assistant", "content": response_text})
+    # Save Assistant Response with filtered sources
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": response_text,
+        "sources": valid_sources
+    })

@@ -76,6 +76,10 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     5. CONVERSATIONAL CLOSING: ONLY when giving a valid spiritual response, end with a warm follow-up question inviting further spiritual discussion. NEVER append a follow-up question if you are giving a fallback/rejection message.
     6. ACCURATE LINKING: Include markdown links [Link Text](URL) ONLY when referencing exact URLs explicitly present in the provided context chunks (or look for 'Page Source Link: <URL>'). Never invent or construct URLs.
     7. CLEAN OUTPUT: Do NOT output raw shortcodes, bracketed plugin tags (e.g. [drts-directory-search ...]), or code blocks.
+    8. LINKING RULES (STRICT):
+	1. MURLI & DAILY AUDIO: direct users ONLY to the BK One Portal for Murli audio streams and daily spiritual study downloads.
+	2. LOCATING CENTERS: For queries about finding local centers, meditation centers, or retreat centers, DO NOT link to the BK One Portal. Instead, direct users to the official Center 	Finder (https://www.brahmakumaris.com/centers/) or use the exact source URL retrieved from context.
+	3. NEVER mention or recommend the 'BK One Portal' unless the user specifically asks about Murli, Daily Audio, or portal-specific features.
 
     CONTEXT CHUNKS:
     {retrieved_context}

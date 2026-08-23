@@ -1,4 +1,9 @@
+import zipfile
 import os
+
+if not os.path.exists("./chroma_db_bk"):
+    with zipfile.ZipFile("chroma_db_bk.zip", "r") as zip_ref:
+        zip_ref.extractall(".")
 import streamlit as st
 import chromadb
 from langchain_chroma import Chroma

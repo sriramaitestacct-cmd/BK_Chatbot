@@ -1,8 +1,10 @@
 import os
 import streamlit as st
+import chromadb
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from groq import Groq
+import build_db
 
 # Page Configuration
 st.set_page_config(
@@ -20,16 +22,23 @@ st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
 # Initialize Groq API Key
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
 
-# Initialize Embeddings & Vector DB
+# Initialize Embeddings & Vector DB (Builds dynamically if missing on host)
 @st.cache_resource
 def load_vector_db():
+    if not os.path.exists(DB_DIR):
+        with st.spinner("Initializing knowledge base database for the first time..."):
+            build_db.build_full_clean_vector_db()
+            
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-    return Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
+    
+    # Initialize persistent client explicitly to prevent Rust binding locks
+    client = chromadb.PersistentClient(path=DB_DIR)
+    return Chroma(client=client, embedding_function=embeddings)
 
 try:
     vector_db = load_vector_db()
 except Exception as e:
-    st.error(f"Error loading vector database: {e}. Please ensure build_db.py has finished executing.")
+    st.error(f"Error loading vector database: {e}")
     st.stop()
 
 # SYSTEM KNOWLEDGE BASE
@@ -55,7 +64,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
 
     CRITICAL RULES:
     1. STRICT DOMAIN BOUNDARY: Answer ONLY questions related to Brahma Kumaris teachings, Rajyoga meditation, spiritual philosophy, centers, and courses.
-    2. REJECT NON-SPIRITUAL OR OUT-OF-SCOPE QUERIES: Do NOT solve math expressions (e.g. "16÷2-8..."), code snippets, or general trivia. Politely decline using this exact standard message and DO NOT ask any follow-up questions:
+    2. REJECT NON-SPIRITUAL OR OUT-OF-SCOPE QUERIES: Do NOT solve math expressions, code snippets, or general trivia. Politely decline using this exact standard message and DO NOT ask any follow-up questions:
        "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
     3. SPIRITUAL CONCEPT EQUIVALENCE: Recognize that Brahmalok, Shanti Dham, Paramdham, Nirvan Dham, and Mool Vatan all refer to the Incorporeal Soul World. Use provided context to explain these terms.
     4. BK ONE PORTAL ROUTING: For queries regarding Daily Murli, Avyakt Murlis, BK Audio, BK Tube, Books, Purusharth Charts, or internal student applications, provide a helpful general overview and direct the user to [BK One Portal](https://www.brahmakumaris.com/bkone).
@@ -69,7 +78,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
 
     messages = [{"role": "system", "content": system_prompt}]
     
-    # Append up to last 4 messages for context (excludes system initial prompt)
+    # Append up to last 4 messages for context
     for msg in chat_history[-4:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
 
@@ -143,7 +152,7 @@ if user_prompt := st.chat_input("Ask a question..."):
                     for src in valid_sources:
                         st.markdown(f"- [{src}]({src})")
 
-    # Save Assistant Response with filtered sources
+    # Save Assistant Response
     st.session_state.messages.append({
         "role": "assistant", 
         "content": response_text,

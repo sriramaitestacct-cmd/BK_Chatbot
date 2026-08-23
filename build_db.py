@@ -80,7 +80,7 @@ def get_clean_primary_urls():
     return clean_urls
 
 def scrape_pages_with_cache(urls):
-    """Loads cached text content if available; scrapes missing URLs via Playwright."""
+    """Loads cached text content if available; scrapes missing URLs via Playwright if available."""
     pages_data = {}
     if os.path.exists(CACHE_FILE):
         print(f"-> Reading cached content from '{CACHE_FILE}'...")
@@ -90,51 +90,48 @@ def scrape_pages_with_cache(urls):
     urls_to_scrape = [u for u in urls if u not in pages_data]
     
     if urls_to_scrape:
-        print(f"-> Scraping {len(urls_to_scrape)} new/uncached pages with Playwright...")
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            
-            for idx, url in enumerate(urls_to_scrape, 1):
-                print(f"   [{idx}/{len(urls_to_scrape)}] Fetching: {url}")
-                try:
-                    page.goto(url, wait_until="networkidle", timeout=30000)
-                    soup = BeautifulSoup(page.content(), 'html.parser')
+        print(f"-> Found {len(urls_to_scrape)} missing URLs to scrape.")
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                
+                for idx, url in enumerate(urls_to_scrape, 1):
+                    print(f"   [{idx}/{len(urls_to_scrape)}] Fetching: {url}")
+                    try:
+                        page.goto(url, wait_until="networkidle", timeout=30000)
+                        soup = BeautifulSoup(page.content(), 'html.parser')
 
-                    for a in soup.find_all('a', href=True):
-                        link_text = a.get_text(strip=True)
-                        link_url = urljoin(url, a['href'])
-                        if link_text and not a['href'].startswith("#"):
-                            a.replace_with(f" [{link_text}]({link_url}) ")
+                        for a in soup.find_all('a', href=True):
+                            link_text = a.get_text(strip=True)
+                            link_url = urljoin(url, a['href'])
+                            if link_text and not a['href'].startswith("#"):
+                                a.replace_with(f" [{link_text}]({link_url}) ")
 
-                    for elem in soup(["script", "style", "nav", "footer", "header", "svg"]):
-                        elem.extract()
+                        for elem in soup(["script", "style", "nav", "footer", "header", "svg"]):
+                            elem.extract()
 
-                    clean_text = "\n".join([line.strip() for line in soup.get_text(separator="\n").splitlines() if line.strip()])
-                    clean_text = clean_wordpress_shortcodes(clean_text)
+                        clean_text = "\n".join([line.strip() for line in soup.get_text(separator="\n").splitlines() if line.strip()])
+                        clean_text = clean_wordpress_shortcodes(clean_text)
 
-                    if len(clean_text) > 150:
-                        pages_data[url] = clean_text
-                except Exception as e:
-                    print(f"   ⚠️ Skipped {url}: {e}")
+                        if len(clean_text) > 150:
+                            pages_data[url] = clean_text
+                    except Exception as e:
+                        print(f"   ⚠️ Skipped {url}: {e}")
 
-            browser.close()
-
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(pages_data, f, ensure_ascii=False, indent=2)
+                browser.close()
+        except Exception as e:
+            print(f"⚠️ Playwright browser launch skipped in this environment: {e}")
 
     documents = []
-    print("-> Processing and translating content into English vector chunks...")
+    print("-> Processing content into English vector chunks...")
     cache_updated = False
 
     for idx, url in enumerate(urls, 1):
         if url in pages_data:
             content = clean_wordpress_shortcodes(pages_data[url])
-            
-            # Check for Hindi & translate
             english_content = translate_if_hindi(content)
             
-            # Save translated version back into cache object if it changed
             if english_content != content:
                 pages_data[url] = english_content
                 cache_updated = True
@@ -142,12 +139,6 @@ def scrape_pages_with_cache(urls):
             url_keywords = url.split('/')[-2].replace('-', ' ') if '/' in url else ""
             formatted_content = f"Page Source Link: {url}\nURL Topic Terms: {url_keywords}\n\n{english_content}"
             documents.append(Document(page_content=formatted_content, metadata={"source": url}))
-
-    # Save cached translations to file so future runs skip translation completely
-    if cache_updated:
-        print("-> Saving newly translated text back to 'cached_pages.json' for instant future runs...")
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(pages_data, f, ensure_ascii=False, indent=2)
 
     return documents
 

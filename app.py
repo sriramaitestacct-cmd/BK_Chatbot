@@ -43,7 +43,7 @@ st.caption(
 # Initialize Groq API Key
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
 
-# Initialize Embeddings & Vector DB
+# Initialize Embeddings & Vector DB (Cached resource to prevent re-loading DB into memory)
 @st.cache_resource
 def load_vector_db():
     if not os.path.exists(DB_DIR):
@@ -97,7 +97,7 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - NEVER use general Bhakti concepts like Shakti-Sattva or Shakti-Samskara.
 """
 
-def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -> str:
+def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> str:
     """Queries Groq LLM with exponential backoff and multi-model failover."""
     client = Groq(api_key=api_key)
     
@@ -138,11 +138,10 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     {retrieved_context}
     """
 
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    # Append only last 2 turns to keep token count low on free tier
-    for msg in chat_history[-2:]:
-        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_query}
+    ]
 
     # Iterate over fallback models
     for model in FALLBACK_MODELS:
@@ -172,6 +171,11 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     # Final fallback if all retries and models on free tier are busy
     return "Om Shanti. I am currently receiving high traffic. Please re-send your question in a moment."
 
+# RESPONSE CACHING: Caches generated answers for 24 hours (86400s) based on exact normalized query & retrieved context.
+@st.cache_data(show_spinner=False, ttl=86400)
+def get_cached_llm_response(user_query: str, retrieved_context: str, api_key: str) -> str:
+    return get_llm_response(user_query, retrieved_context, api_key)
+
 # Chat Interface Initialization
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -198,8 +202,9 @@ if user_prompt := st.chat_input("Ask a question..."):
             context_blocks = [doc.page_content for doc in results]
             combined_context = "\n\n---\n\n".join(context_blocks)
 
-            # Query Groq LLM
-            response_text = get_llm_response(st.session_state.messages, combined_context, GROQ_API_KEY)
+            # Query cached LLM response (Normalizes prompt text to increase cache hits)
+            normalized_query = user_prompt.strip().lower()
+            response_text = get_cached_llm_response(normalized_query, combined_context, GROQ_API_KEY)
 
             # Display Output
             st.markdown(response_text)

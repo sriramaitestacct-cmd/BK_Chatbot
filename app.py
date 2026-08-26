@@ -1,5 +1,6 @@
 import zipfile
 import os
+import time
 
 # Automatically extract pre-built vector DB if zip exists
 if not os.path.exists("./chroma_db_bk") and os.path.exists("chroma_db_bk.zip"):
@@ -22,7 +23,12 @@ st.set_page_config(
 
 # Configuration Constants
 DB_DIR = "./chroma_db_bk"
-MODEL_NAME = "openai/gpt-oss-20b"
+
+# Active Model Priority List (Primary -> Backup Fallback)
+FALLBACK_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant"
+]
 
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
 
@@ -60,7 +66,8 @@ except Exception as e:
 OFFICIAL_BK_GROUND_TRUTH = """
 OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 
-1. CORE STATISTICS:
+1. CORE STATISTICS & HEADQUARTERS:
+   - International Headquarters: Mount Abu, Rajasthan, India (Madhuban / Pandav Bhawan / Shantivan / Gyan Sarovar). NEVER state New Delhi or any other city as the main headquarters.
    - Regular Students: 10 Lacs+ (1 Million+)
    - Meditation Centers: 5,650+
    - Retreat Centers: 17+
@@ -92,7 +99,7 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 """
 
 def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -> str:
-    """Queries Groq LLM with context, conversation history, and strict behavior rules."""
+    """Queries Groq LLM with context, conversation history, fallback models, and automatic retries."""
     client = Groq(api_key=api_key)
     
     system_prompt = f"""
@@ -104,6 +111,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     CRITICAL RULES:
     1. CONTEXT & GROUND TRUTH STRICTNESS:
        - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
+       - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
        - NEVER default to general Hindu mythology, Puranic timelines (millions of years), or Bhakti definitions.
        - MEDIA & CLASSES REDIRECTION (MURLI / VARDAN / BLESSING / SLOGAN / CLASSES / TALKS / SPEAKERS):
          If the user asks for ANY spiritual classes, talks, lectures, audio/video streams, or daily content (including specific speakers like BK Shivani, Suraj Bhai, etc., e.g., "bk shivani classes", "today's vardan", "daily class", "rajyoga class audio"), inform them warmly that official classes, audio/video lectures, Murlis, and daily spiritual study material are hosted directly on the BK One Portal, and provide the exact link: [BK One Portal](https://www.brahmakumaris.com/bkone).
@@ -125,7 +133,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
 
     5. OUTPUT & CLOSING STYLE:
        - Clean format: Do NOT output raw shortcodes, bracketed tags (e.g. [drts-directory-search]), or code blocks.
-       - Conversational Closing: End valid spiritual answers (including class/media redirections) with a warm follow-up question inviting further spiritual discussion. NEVER append follow-up questions to rejection messages.
+       - Conversational Closing: End valid spiritual answers (including class/media/HQ redirections) with a warm follow-up question inviting further spiritual discussion. NEVER append follow-up questions to rejection messages.
 
     CONTEXT CHUNKS:
     {retrieved_context}
@@ -137,19 +145,33 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     for msg in chat_history[-4:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
 
-    try:
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=messages,
-            temperature=0.1
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        # Gracefully handle Rate Limits (HTTP 429) without crashing the Streamlit app
-        if "rate_limit" in str(e).lower() or "429" in str(e):
-            return "Om Shanti. High request volume detected. Please wait 1-2 minutes before sending another query."
-        else:
-            return f"Om Shanti. An unexpected error occurred: {e}"
+    # Model loop to allow automatic fallback if a model is deprecated or unavailable
+    for model in FALLBACK_MODELS:
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                completion = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.1
+                )
+                return completion.choices[0].message.content
+            except Exception as e:
+                err_str = str(e).lower()
+                
+                # If model name deprecated/not found, exit retry loop to try backup model
+                if "model" in err_str or "not_found" in err_str or "decommissioned" in err_str:
+                    break
+                
+                # Handle rate limit with exponential backoff
+                if ("rate_limit" in err_str or "429" in err_str) and attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                elif attempt == max_retries - 1:
+                    # If this model exhausted retries, try the next model in FALLBACK_MODELS
+                    break
+
+    return "Om Shanti. The service is currently experiencing high demand. Please try again in a few seconds."
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
@@ -171,7 +193,7 @@ if user_prompt := st.chat_input("Ask a question..."):
     with st.chat_message("assistant"):
         with st.spinner("Searching official BK knowledge base..."):
             
-            # Reduced k from 5 to 3 to optimize prompt token limits and stay under rate limits
+            # Fetch top 3 chunks to optimize context window and lower token limits
             results = vector_db.similarity_search(user_prompt, k=3)
             
             context_blocks = []

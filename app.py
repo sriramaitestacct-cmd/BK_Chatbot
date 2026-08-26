@@ -72,6 +72,7 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - Total Duration: Exactly 5,000 years (NEVER millions of years).
    - 4 Major Yugas (1,250 years each): Satyug (Golden Age), Tretayug (Silver Age), Dwaparyug (Copper Age), Kaliyug (Iron Age).
    - Sangam Yug (Confluence Age): The brief ~100-year transitional age between the end of Kaliyug and beginning of Satyug.
+   - Sangam Yug Timeline: Sangam Yug occurs AT THE END of Kaliyug within the total 5,000-year cycle (it is NOT an extra 100 years added on top of 5,000 years).
    - Significance: In Sangam Yug, God Shiva descends into Brahma Baba to give Gyan, teach Rajyoga, and transform the world from iron-aged to golden-aged.
 
 3. GOD SHIVA vs. BRAHMA BABA vs. SHANKAR:
@@ -113,7 +114,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
 
     3. TERMINOLOGY GUARDRAILS:
        - SOUL vs. SOUL WORLD: Souls (living points of light) undergo rebirth, distress, and purification. The Soul World (Paramdham) is the eternal, silent home that never experiences distress or mood changes.
-       - SANGAM YUG: Always include the Confluence Age (~100 years) when explaining the World Drama Wheel or Time Cycle.
+       - SANGAM YUG: Always include the Confluence Age (~100 years) when explaining the World Drama Wheel or Time Cycle, specifying that it occurs at the end of Kaliyug within the total 5,000-year cycle.
 
     4. LINKING RULES (STRICT):
        - MURLI & DAILY AUDIO: Direct users ONLY to [BK One Portal](https://www.brahmakumaris.com/bkone) for Murli audio, streams, and daily downloads.

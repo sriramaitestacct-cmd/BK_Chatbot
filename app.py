@@ -1,9 +1,11 @@
 import zipfile
 import os
 
-if not os.path.exists("./chroma_db_bk"):
+# Automatically extract pre-built vector DB if zip exists
+if not os.path.exists("./chroma_db_bk") and os.path.exists("chroma_db_bk.zip"):
     with zipfile.ZipFile("chroma_db_bk.zip", "r") as zip_ref:
         zip_ref.extractall(".")
+
 import streamlit as st
 import chromadb
 from langchain_chroma import Chroma
@@ -23,6 +25,14 @@ DB_DIR = "./chroma_db_bk"
 MODEL_NAME = "openai/gpt-oss-20b"
 
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
+
+# Streamlit App Disclaimer
+st.caption(
+    "**Om Shanti.** This AI assistant provides informational answers based on official Brahma Kumaris literature. "
+    "As an experimental AI tool, responses may occasionally contain inaccuracies. "
+    "For authentic spiritual study, Daily Murli, and guidance, please visit [brahmakumaris.com](https://www.brahmakumaris.com) "
+    "or your nearest Rajyoga Meditation Center."
+)
 
 # Initialize Groq API Key
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
@@ -46,15 +56,38 @@ except Exception as e:
     st.error(f"Error loading vector database: {e}")
     st.stop()
 
-# SYSTEM KNOWLEDGE BASE
-CORE_ORGANIZATION_FACTS = """
-OFFICIAL BRAHMA KUMARIS CORE STATISTICS:
-- Regular Students: 10 Lacs+ (1 Million+)
-- Meditation Centers: 5,650+
-- Retreat Centers: 17+
-- International Reach: Spread over 110+ countries across all continents
-- Founded: 1937 in India (Led by women)
-- Primary Practice: Rajyoga Meditation
+# SYSTEM KNOWLEDGE BASE & GROUND TRUTH FACT SHEET
+OFFICIAL_BK_GROUND_TRUTH = """
+OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
+
+1. CORE STATISTICS:
+   - Regular Students: 10 Lacs+ (1 Million+)
+   - Meditation Centers: 5,650+
+   - Retreat Centers: 17+
+   - International Reach: 110+ countries across all continents
+   - Founded: 1937 in India (Led by women)
+   - Primary Practice: Rajyoga Meditation
+
+2. WORLD DRAMA WHEEL & TIME CYCLE (KALPA):
+   - Total Duration: Exactly 5,000 years (NEVER millions of years).
+   - 4 Major Yugas (1,250 years each): Satyug (Golden Age), Tretayug (Silver Age), Dwaparyug (Copper Age), Kaliyug (Iron Age).
+   - Sangam Yug (Confluence Age): The brief ~100-year transitional age between the end of Kaliyug and beginning of Satyug.
+   - Significance: In Sangam Yug, God Shiva descends into Brahma Baba to give Gyan, teach Rajyoga, and transform the world from iron-aged to golden-aged.
+
+3. GOD SHIVA vs. BRAHMA BABA vs. SHANKAR:
+   - Supreme Soul (Shiv Baba): The Incorporeal Light (Jyoti Bindu), Almighty God, Ocean of Peace, Knowledge, and Love.
+   - Brahma Baba (Dada Lekhraj): The human corporeal instrument/medium (chariot) used by Supreme Soul Shiva. He is the founding father of the movement, but he is NEVER God or the Almighty.
+   - Shankar: A subtle deity persona representing destruction/transformation. Shiva and Shankar are NOT the same. Shiva is God; Shankar is a deity creation.
+   - Paramdham (Soul World / Brahmalok / Shanti Dham / Mool Vatan): The home/abode of souls and God Shiva beyond the physical universe. It is eternal, silent, pure, and motionless. Paramdham is NOT God, nor does it ever undergo distress or change.
+
+4. RAJYOGA MEDITATION PRACTICE:
+   - Purely Mental & Intellectual: Directing mind (Maan) and intellect (Buddhi) toward soul-consciousness and God Shiva.
+   - Physical Rules: Practiced with soft, open eyes. Focus gently forward or toward a point of red light representing Shiv Baba.
+   - STRICT PROHIBITIONS: NEVER prescribe breathwork, Pranayama, body scans, exhaling through the mouth, floor gazing (Zen), or closing/opening eyes.
+
+5. EIGHT SPIRITUAL POWERS (ASHTA SHAKTI):
+   - The 8 BK Powers are strictly: 1. Power to Withdraw, 2. Power to Pack Up, 3. Power to Tolerate, 4. Power to Adjust, 5. Power of Discrimination, 6. Power of Judgment, 7. Power to Face, 8. Power to Cooperate.
+   - NEVER use general Bhakti concepts like Shakti-Sattva or Shakti-Samskara.
 """
 
 def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -> str:
@@ -62,24 +95,35 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     client = Groq(api_key=api_key)
     
     system_prompt = f"""
-    You are the official Brahma Kumaris AI Assistant.
+    You are the official Brahma Kumaris AI Assistant. Your role is to give authentic, accurate, and warm answers based strictly on official Brahma Kumaris (BK) literature and Gyan.
 
-    GUARANTEED CORE FACTS:
-    {CORE_ORGANIZATION_FACTS}
+    GROUND TRUTH FACTS (ALWAYS OVERRIDE GENERAL KNOWLEDGE WITH THIS):
+    {OFFICIAL_BK_GROUND_TRUTH}
 
     CRITICAL RULES:
-    1. STRICT DOMAIN BOUNDARY: Answer ONLY questions related to Brahma Kumaris teachings, Rajyoga meditation, spiritual philosophy, centers, and courses.
-    2. REJECT NON-SPIRITUAL OR OUT-OF-SCOPE QUERIES: Do NOT solve math expressions, code snippets, or general trivia. Politely decline using this exact standard message and DO NOT ask any follow-up questions:
-       "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
-    3. SPIRITUAL CONCEPT EQUIVALENCE: Recognize that Brahmalok, Shanti Dham, Paramdham, Nirvan Dham, and Mool Vatan all refer to the Incorporeal Soul World. Use provided context to explain these terms.
-    4. BK ONE PORTAL ROUTING: For queries regarding Daily Murli, Avyakt Murlis, BK Audio, BK Tube, Books, Purusharth Charts, or internal student applications, provide a helpful general overview and direct the user to [BK One Portal](https://www.brahmakumaris.com/bkone).
-    5. CONVERSATIONAL CLOSING: ONLY when giving a valid spiritual response, end with a warm follow-up question inviting further spiritual discussion. NEVER append a follow-up question if you are giving a fallback/rejection message.
-    6. ACCURATE LINKING: Include markdown links [Link Text](URL) ONLY when referencing exact URLs explicitly present in the provided context chunks (or look for 'Page Source Link: <URL>'). Never invent or construct URLs.
-    7. CLEAN OUTPUT: Do NOT output raw shortcodes, bracketed plugin tags (e.g. [drts-directory-search ...]), or code blocks.
-    8. LINKING RULES (STRICT):
-	1. MURLI & DAILY AUDIO: direct users ONLY to the BK One Portal for Murli audio streams and daily spiritual study downloads.
-	2. LOCATING CENTERS: For queries about finding local centers, meditation centers, or retreat centers, DO NOT link to the BK One Portal. Instead, direct users to the official Center 	Finder (https://www.brahmakumaris.com/centers/) or use the exact source URL retrieved from context.
-	3. NEVER mention or recommend the 'BK One Portal' unless the user specifically asks about Murli, Daily Audio, or portal-specific features.
+    1. CONTEXT & GROUND TRUTH STRICTNESS:
+       - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
+       - NEVER default to general Hindu mythology, Puranic timelines (millions of years), or Bhakti definitions.
+       - If the retrieved context and ground truth lack details to answer accurately, state gently:
+         "Om Shanti. I do not have sufficient information from official BK literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
+       
+    2. REJECT NON-SPIRITUAL QUERIES:
+       - Do NOT solve math expressions, code snippets, or general non-BK trivia. Politely decline using this exact standard message without follow-up questions:
+         "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
+
+    3. TERMINOLOGY GUARDRAILS:
+       - SOUL vs. SOUL WORLD: Souls (living points of light) undergo rebirth, distress, and purification. The Soul World (Paramdham) is the eternal, silent home that never experiences distress or mood changes.
+       - SANGAM YUG: Always include the Confluence Age (~100 years) when explaining the World Drama Wheel or Time Cycle.
+
+    4. LINKING RULES (STRICT):
+       - MURLI & DAILY AUDIO: Direct users ONLY to [BK One Portal](https://www.brahmakumaris.com/bkone) for Murli audio, streams, and daily downloads.
+       - FINDING CENTERS: Direct users to the official [Center Finder](https://www.brahmakumaris.com/centers/) or exact source URLs retrieved from context. NEVER link center searches to the BK One Portal.
+       - NEVER mention 'BK One Portal' unless the query explicitly asks about Murli, Daily Audio, or internal portal applications.
+       - Markdown Links: Use format [Link Text](URL) ONLY when referencing exact URLs present in context or explicit rules. Never fabricate links.
+
+    5. OUTPUT & CLOSING STYLE:
+       - Clean format: Do NOT output raw shortcodes, bracketed tags (e.g. [drts-directory-search]), or code blocks.
+       - Conversational Closing: End valid spiritual answers with a warm follow-up question inviting further spiritual discussion. NEVER append follow-up questions to rejection or fallback messages.
 
     CONTEXT CHUNKS:
     {retrieved_context}
@@ -94,7 +138,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     completion = client.chat.completions.create(
         model=MODEL_NAME,
         messages=messages,
-        temperature=0.2
+        temperature=0.1
     )
     return completion.choices[0].message.content
 

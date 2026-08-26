@@ -24,10 +24,10 @@ st.set_page_config(
 # Configuration Constants
 DB_DIR = "./chroma_db_bk"
 
-# Active Model Priority List (Primary -> Backup Fallback)
+# Models ordered by free-tier capacity and reliability
 FALLBACK_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
+    "llama-3.1-8b-instant",      # Highest free TPM/RPM capacity
+    "llama-3.3-70b-versatile"    # Higher quality fallback
 ]
 
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
@@ -43,7 +43,7 @@ st.caption(
 # Initialize Groq API Key
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
 
-# Initialize Embeddings & Vector DB (Builds dynamically if missing on host)
+# Initialize Embeddings & Vector DB
 @st.cache_resource
 def load_vector_db():
     if not os.path.exists(DB_DIR):
@@ -52,7 +52,6 @@ def load_vector_db():
             
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     
-    # Initialize persistent client explicitly to prevent Rust binding locks
     client = chromadb.PersistentClient(path=DB_DIR)
     return Chroma(client=client, embedding_function=embeddings)
 
@@ -99,7 +98,7 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 """
 
 def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -> str:
-    """Queries Groq LLM with context, conversation history, fallback models, and automatic retries."""
+    """Queries Groq LLM with exponential backoff and multi-model failover."""
     client = Groq(api_key=api_key)
     
     system_prompt = f"""
@@ -141,11 +140,11 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
 
     messages = [{"role": "system", "content": system_prompt}]
     
-    # Append up to last 4 messages for context
-    for msg in chat_history[-4:]:
+    # Append only last 2 turns to keep token count low on free tier
+    for msg in chat_history[-2:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
 
-    # Model loop to allow automatic fallback if a model is deprecated or unavailable
+    # Iterate over fallback models
     for model in FALLBACK_MODELS:
         max_retries = 3
         for attempt in range(max_retries):
@@ -159,19 +158,19 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
             except Exception as e:
                 err_str = str(e).lower()
                 
-                # If model name deprecated/not found, exit retry loop to try backup model
+                # If model deprecated/not found, break attempt loop to switch to next model
                 if "model" in err_str or "not_found" in err_str or "decommissioned" in err_str:
                     break
                 
-                # Handle rate limit with exponential backoff
+                # Exponential backoff on rate limit (3s, 6s)
                 if ("rate_limit" in err_str or "429" in err_str) and attempt < max_retries - 1:
-                    time.sleep(2 * (attempt + 1))
+                    time.sleep(3 * (attempt + 1))
                     continue
                 elif attempt == max_retries - 1:
-                    # If this model exhausted retries, try the next model in FALLBACK_MODELS
                     break
 
-    return "Om Shanti. The service is currently experiencing high demand. Please try again in a few seconds."
+    # Final fallback if all retries and models on free tier are busy
+    return "Om Shanti. I am currently receiving high traffic. Please re-send your question in a moment."
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
@@ -193,16 +192,13 @@ if user_prompt := st.chat_input("Ask a question..."):
     with st.chat_message("assistant"):
         with st.spinner("Searching official BK knowledge base..."):
             
-            # Fetch top 3 chunks to optimize context window and lower token limits
-            results = vector_db.similarity_search(user_prompt, k=3)
+            # Retrieve top 2 chunks to minimize token consumption
+            results = vector_db.similarity_search(user_prompt, k=2)
             
-            context_blocks = []
-            for doc in results:
-                context_blocks.append(doc.page_content)
-            
+            context_blocks = [doc.page_content for doc in results]
             combined_context = "\n\n---\n\n".join(context_blocks)
 
-            # Query Groq LLM with chat history
+            # Query Groq LLM
             response_text = get_llm_response(st.session_state.messages, combined_context, GROQ_API_KEY)
 
             # Display Output

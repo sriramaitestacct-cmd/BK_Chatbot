@@ -137,12 +137,19 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     for msg in chat_history[-4:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
 
-    completion = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=0.1
-    )
-    return completion.choices[0].message.content
+    try:
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.1
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        # Gracefully handle Rate Limits (HTTP 429) without crashing the Streamlit app
+        if "rate_limit" in str(e).lower() or "429" in str(e):
+            return "Om Shanti. High request volume detected. Please wait 1-2 minutes before sending another query."
+        else:
+            return f"Om Shanti. An unexpected error occurred: {e}"
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
@@ -164,8 +171,8 @@ if user_prompt := st.chat_input("Ask a question..."):
     with st.chat_message("assistant"):
         with st.spinner("Searching official BK knowledge base..."):
             
-            # Retrieve top 5 matching chunks from Vector Store
-            results = vector_db.similarity_search(user_prompt, k=5)
+            # Reduced k from 5 to 3 to optimize prompt token limits and stay under rate limits
+            results = vector_db.similarity_search(user_prompt, k=3)
             
             context_blocks = []
             for doc in results:

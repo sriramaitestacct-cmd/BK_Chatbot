@@ -120,6 +120,7 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
        - MURLI & DAILY AUDIO: Direct users ONLY to [BK One Portal](https://www.brahmakumaris.com/bkone) for Murli audio, streams, and daily downloads.
        - FINDING CENTERS: Direct users to the official [Center Finder](https://www.brahmakumaris.com/centers/) or exact source URLs retrieved from context. NEVER link center searches to the BK One Portal.
        - NEVER mention 'BK One Portal' unless the query explicitly asks about Murli, Daily Audio, or internal portal applications.
+       - RELEVANT SOURCES ONLY: If the retrieved context contains URLs that are unrelated or off-topic to the specific query (e.g., event pages, tree plantation projects, or unrelated blog posts), DO NOT include or reference those links.
        - Markdown Links: Use format [Link Text](URL) ONLY when referencing exact URLs present in context or explicit rules. Never fabricate links.
 
     5. OUTPUT & CLOSING STYLE:
@@ -143,36 +144,20 @@ def get_llm_response(chat_history: list, retrieved_context: str, api_key: str) -
     )
     return completion.choices[0].message.content
 
-def is_fallback_response(text: str) -> bool:
-    """Detects standard guardrail or fallback statements in LLM response."""
-    fallback_signatures = [
-        "designed specifically to assist",
-        "do not have information",
-        "don't have information",
-        "couldn't find relevant information",
-        "how may i assist you with those topics"
-    ]
-    lower_text = text.lower()
-    return any(sig in lower_text for sig in fallback_signatures)
-
 # Chat Interface Initialization
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Om Shanti. How may I assist you with Brahma Kumaris knowledge today?", "sources": []}
+        {"role": "assistant", "content": "Om Shanti. How may I assist you with Brahma Kumaris knowledge today?"}
     ]
 
 # Display Existing Chat History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if msg.get("sources"):
-            with st.expander("📍 View Retrieved Source URLs"):
-                for src in msg["sources"]:
-                    st.markdown(f"- [{src}]({src})")
 
 # User Query Processing
 if user_prompt := st.chat_input("Ask a question..."):
-    st.session_state.messages.append({"role": "user", "content": user_prompt, "sources": []})
+    st.session_state.messages.append({"role": "user", "content": user_prompt})
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
@@ -183,12 +168,8 @@ if user_prompt := st.chat_input("Ask a question..."):
             results = vector_db.similarity_search(user_prompt, k=5)
             
             context_blocks = []
-            sources = set()
-            
             for doc in results:
                 context_blocks.append(doc.page_content)
-                if "source" in doc.metadata:
-                    sources.add(doc.metadata["source"])
             
             combined_context = "\n\n---\n\n".join(context_blocks)
 
@@ -197,18 +178,9 @@ if user_prompt := st.chat_input("Ask a question..."):
 
             # Display Output
             st.markdown(response_text)
-            
-            # Only show sources if response is valid and NOT a fallback refusal
-            valid_sources = []
-            if sources and not is_fallback_response(response_text):
-                valid_sources = list(sources)
-                with st.expander("📍 View Retrieved Source URLs"):
-                    for src in valid_sources:
-                        st.markdown(f"- [{src}]({src})")
 
     # Save Assistant Response
     st.session_state.messages.append({
         "role": "assistant", 
-        "content": response_text,
-        "sources": valid_sources
+        "content": response_text
     })

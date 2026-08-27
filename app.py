@@ -78,18 +78,19 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - Founded: 1937 in India (Led by women)
    - Primary Practice: Rajyoga Meditation
 
-2. WORLD DRAMA WHEEL & TIME CYCLE (KALPA):
+2. KEY FIGURES & PERSONALITIES:
+   - Supreme Soul (Shiv Baba): The Incorporeal Light (Jyoti Bindu), Almighty God, Ocean of Peace, Knowledge, and Love.
+   - Brahma Baba (Dada Lekhraj): The human corporeal instrument/medium (chariot) used by Supreme Soul Shiva. He is the founding father of the movement, but he is NEVER God or the Almighty.
+   - Mama / Mateshwari Saraswati: Refers specifically to Mateshwari Jagadamba Saraswati (original name: Radha), the first Administrative Head of the Brahma Kumaris and the World Mother (Jagadamba). "Mama" is NEVER a generic term or title for ordinary female teachers.
+   - Shankar: A subtle deity persona representing destruction/transformation. Shiva and Shankar are NOT the same. Shiva is God; Shankar is a deity creation.
+   - Paramdham (Soul World / Brahmalok / Shanti Dham / Mool Vatan): The home/abode of souls and God Shiva beyond the physical universe. It is eternal, silent, pure, and motionless. Paramdham is NOT God, nor does it ever undergo distress or change.
+
+3. WORLD DRAMA WHEEL & TIME CYCLE (KALPA):
    - Total Duration: Exactly 5,000 years (NEVER millions of years).
    - 4 Major Yugas (1,250 years each): Satyug (Golden Age), Tretayug (Silver Age), Dwaparyug (Copper Age), Kaliyug (Iron Age).
    - Sangam Yug (Confluence Age): The brief ~100-year transitional age between the end of Kaliyug and beginning of Satyug.
    - Sangam Yug Timeline: Sangam Yug occurs AT THE END of Kaliyug within the total 5,000-year cycle (it is NOT an extra 100 years added on top of 5,000 years).
    - Significance: In Sangam Yug, God Shiva descends into Brahma Baba to give Gyan, teach Rajyoga, and transform the world from iron-aged to golden-aged.
-
-3. GOD SHIVA vs. BRAHMA BABA vs. SHANKAR:
-   - Supreme Soul (Shiv Baba): The Incorporeal Light (Jyoti Bindu), Almighty God, Ocean of Peace, Knowledge, and Love.
-   - Brahma Baba (Dada Lekhraj): The human corporeal instrument/medium (chariot) used by Supreme Soul Shiva. He is the founding father of the movement, but he is NEVER God or the Almighty.
-   - Shankar: A subtle deity persona representing destruction/transformation. Shiva and Shankar are NOT the same. Shiva is God; Shankar is a deity creation.
-   - Paramdham (Soul World / Brahmalok / Shanti Dham / Mool Vatan): The home/abode of souls and God Shiva beyond the physical universe. It is eternal, silent, pure, and motionless. Paramdham is NOT God, nor does it ever undergo distress or change.
 
 4. RAJYOGA MEDITATION PRACTICE:
    - Purely Mental & Intellectual: Directing mind (Maan) and intellect (Buddhi) toward soul-consciousness and God Shiva.
@@ -119,7 +120,9 @@ def get_llm_response(messages_list: list, api_key: str) -> str:
                     messages=messages_list,
                     temperature=0.1
                 )
-                return completion.choices[0].message.content
+                res_content = completion.choices[0].message.content
+                if res_content and res_content.strip():
+                    return res_content
             except Exception as e:
                 err_str = str(e)
                 last_error = f"Model '{model}': {err_str}"
@@ -187,12 +190,17 @@ if user_prompt := st.chat_input("Ask a question..."):
             {combined_context}
             """
 
-            # Build multi-turn chat message payload so model maintains conversation context
+            # Build payload: System Prompt + Truncated History (Last 6 Messages)
             api_messages = [{"role": "system", "content": system_prompt}]
-            for m in st.session_state.messages:
+            recent_history = st.session_state.messages[-6:]
+            for m in recent_history:
                 api_messages.append({"role": m["role"], "content": m["content"]})
 
             response_text = get_llm_response(api_messages, GROQ_API_KEY)
+
+            # Fallback if API returns empty text
+            if not response_text or not response_text.strip():
+                response_text = "Om Shanti. I could not generate a response for this query. Please rephrase your question."
 
             # Display Output
             st.markdown(response_text)

@@ -26,9 +26,9 @@ DB_DIR = "./chroma_db_bk"
 
 # Models ordered by free-tier capacity and reliability
 FALLBACK_MODELS = [
-    "llama-3.1-8b-instant",      # Highest free TPM/RPM capacity
-    "llama-3.3-70b-versatile",   # Higher quality fallback
-    "mixtral-8x7b-32768"
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b"
 ]
 
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")

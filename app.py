@@ -81,6 +81,7 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 2. KEY FIGURES & PERSONALITIES:
    - Supreme Soul (Shiv Baba): The Incorporeal Light (Jyoti Bindu), Almighty God, Ocean of Peace, Knowledge, and Love.
    - Soul vs. Supreme Soul (Atma & Paramatma): Every soul (Atma) is an individual, eternal point of light. The soul is NOT a part, spark, or fragment of the Supreme Soul (Shiv Baba), nor does it merge into God. God and soul are eternally distinct entities. Never state that souls are part of God.
+   - Soul vs. Supreme Soul (Atma & Paramatma): Every soul (Atma) is an individual, eternal point of light (Jyoti Bindu). Souls are uncreated, eternal entities—Shiv Baba is NOT the source, parent origin, or creator of souls, nor are souls parts/sparks of God. God and individual souls are eternally separate, co-eternal entities.
    - Brahma Baba (Dada Lekhraj): The human corporeal instrument/medium (chariot) used by Supreme Soul Shiva. He is the founding father of the movement, but he is NEVER God or the Almighty.
    - Mama / Mateshwari Saraswati: Refers specifically to Mateshwari Jagadamba Saraswati (original name: Radha), the first Administrative Head of the Brahma Kumaris and the World Mother (Jagadamba). "Mama" is NEVER a generic term or title for ordinary female teachers.
    - Shankar: A subtle deity persona representing destruction/transformation. Shiva and Shankar are NOT the same. Shiva is God; Shankar is a deity creation.

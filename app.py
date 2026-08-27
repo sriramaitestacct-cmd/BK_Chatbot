@@ -28,6 +28,7 @@ DB_DIR = "./chroma_db_bk"
 FALLBACK_MODELS = [
     "llama-3.1-8b-instant",      # Highest free TPM/RPM capacity
     "llama-3.3-70b-versatile"    # Higher quality fallback
+    "mixtral-8x7b-32768"
 ]
 
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
@@ -169,7 +170,7 @@ def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> s
                     break
 
     # Final fallback if all retries and models on free tier are busy
-    return "Om Shanti. I am currently receiving high traffic. Please re-send your question in a moment."
+    return f"Om Shanti. Groq API call failed. Check Streamlit Logs or Key. (Debug: Ensure GROQ_API_KEY is valid)."
 
 # RESPONSE CACHING: Caches generated answers for 24 hours (86400s) based on exact normalized query & retrieved context.
 @st.cache_data(show_spinner=False, ttl=86400)

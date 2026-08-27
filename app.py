@@ -27,7 +27,7 @@ DB_DIR = "./chroma_db_bk"
 # Models ordered by free-tier capacity and reliability
 FALLBACK_MODELS = [
     "llama-3.1-8b-instant",      # Highest free TPM/RPM capacity
-    "llama-3.3-70b-versatile"    # Higher quality fallback
+    "llama-3.3-70b-versatile",   # Higher quality fallback
     "mixtral-8x7b-32768"
 ]
 
@@ -43,6 +43,9 @@ st.caption(
 
 # Initialize Groq API Key
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+
+if not GROQ_API_KEY:
+    st.error("⚠️ GROQ_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
 
 # Initialize Embeddings & Vector DB (Cached resource to prevent re-loading DB into memory)
 @st.cache_resource
@@ -100,6 +103,9 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 
 def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> str:
     """Queries Groq LLM with exponential backoff and multi-model failover."""
+    if not api_key:
+        return "Om Shanti. GROQ_API_KEY is missing. Please set your key in Streamlit Secrets."
+
     client = Groq(api_key=api_key)
     
     system_prompt = f"""
@@ -144,6 +150,8 @@ def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> s
         {"role": "user", "content": user_query}
     ]
 
+    last_error = ""
+
     # Iterate over fallback models
     for model in FALLBACK_MODELS:
         max_retries = 3
@@ -156,21 +164,22 @@ def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> s
                 )
                 return completion.choices[0].message.content
             except Exception as e:
-                err_str = str(e).lower()
+                err_str = str(e)
+                last_error = f"Model '{model}': {err_str}"
                 
                 # If model deprecated/not found, break attempt loop to switch to next model
-                if "model" in err_str or "not_found" in err_str or "decommissioned" in err_str:
+                if "model" in err_str.lower() or "not_found" in err_str.lower() or "decommissioned" in err_str.lower():
                     break
                 
                 # Exponential backoff on rate limit (3s, 6s)
-                if ("rate_limit" in err_str or "429" in err_str) and attempt < max_retries - 1:
+                if ("rate_limit" in err_str.lower() or "429" in err_str) and attempt < max_retries - 1:
                     time.sleep(3 * (attempt + 1))
                     continue
                 elif attempt == max_retries - 1:
                     break
 
-    # Final fallback if all retries and models on free tier are busy
-    return f"Om Shanti. Groq API call failed. Check Streamlit Logs or Key. (Debug: Ensure GROQ_API_KEY is valid)."
+    # Detailed return string to show the exact Python/Groq exception on UI
+    return f"Om Shanti. Groq API call failed. Details: {last_error}"
 
 # RESPONSE CACHING: Caches generated answers for 24 hours (86400s) based on exact normalized query & retrieved context.
 @st.cache_data(show_spinner=False, ttl=86400)

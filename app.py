@@ -100,6 +100,12 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 5. EIGHT SPIRITUAL POWERS (ASHTA SHAKTI):
    - The 8 BK Powers are strictly: 1. Power to Withdraw, 2. Power to Pack Up, 3. Power to Tolerate, 4. Power to Adjust, 5. Power of Discrimination, 6. Power of Judgment, 7. Power to Face, 8. Power to Cooperate.
    - NEVER use general Bhakti concepts like Shakti-Sattva or Shakti-Samskara.
+
+6. CELIBACY (BRAHMACHARYA) & MARRIAGE:
+   - Celibacy (Pavitrata) in thought, word, and deed is the fundamental prerequisite for soul-consciousness and Rajyoga meditation.
+   - MARRIAGE & HOUSEHOLDERS: Married couples (Grihasthis) CAN be regular BK students. Marriage is NOT prohibited. However, total celibacy must be practiced within marriage.
+   - LIVING STRUCTURE: The vast majority of BK students live in their private homes, hold normal jobs, and raise families while practicing celibacy. Surrendering to live in centers is optional, not mandatory.
+   - REASON FOR CELIBACY: It frees the intellect (Buddhi) from physical attachments, conserves spiritual energy, and enables direct connection with Supreme Soul Shiv Baba during Sangam Yug.
 """
 
 def get_llm_response(messages_list: list, api_key: str) -> str:
@@ -177,6 +183,7 @@ if user_prompt := st.chat_input("Ask a question..."):
                - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
                - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
                - FOLLOW-UP / SHORT RESPONSES: If the user gives a short response like "yes", "yes pls", "tell me more", or "ok", look at the previous context in chat history and elaborate on that topic. Do NOT randomly output headquarters or unrelated info.
+               - NO LABELED CLOSINGS: Never end responses with section headers like "Bottom line:", "Summary:", or "In Conclusion:".
                - SPECIFIC URL MAPPINGS:
                  * If the user asks for "Soul Sustenance" or videos/articles on soul sustenance, provide the exact link: [Soul Sustenance Category](https://www.brahmakumaris.com/category/soul-sustenance/).
                  * If the user asks for general daily content or classes (e.g., "today's vardan", "bk shivani classes"), provide: [BK One Portal](https://www.brahmakumaris.com/bkone).

@@ -1,6 +1,5 @@
 import zipfile
 import os
-import time
 
 # Automatically extract pre-built vector DB if zip exists
 if not os.path.exists("./chroma_db_bk") and os.path.exists("chroma_db_bk.zip"):
@@ -11,7 +10,8 @@ import streamlit as st
 import chromadb
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from groq import Groq
+from google import genai
+from google.genai import types
 import build_db
 
 # Page Configuration
@@ -24,13 +24,6 @@ st.set_page_config(
 # Configuration Constants
 DB_DIR = "./chroma_db_bk"
 
-# ACTIVE Models (Post-August 2026 Deprecation)
-FALLBACK_MODELS = [
-    "openai/gpt-oss-20b",
-    "openai/gpt-oss-120b",
-    "qwen/qwen3.6-27b"
-]
-
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
 
 # Streamlit App Disclaimer
@@ -41,11 +34,11 @@ st.caption(
     "or your nearest Rajyoga Meditation Center."
 )
 
-# Initialize Groq API Key
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+# Initialize Gemini API Key
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
 
-if not GROQ_API_KEY:
-    st.error("⚠️ GROQ_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
+if not GEMINI_API_KEY:
+    st.error("⚠️ GEMINI_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
 
 # Initialize Embeddings & Vector DB
 @st.cache_resource
@@ -80,7 +73,6 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
 
 2. KEY FIGURES & PERSONALITIES:
    - Supreme Soul (Shiv Baba): The Incorporeal Light (Jyoti Bindu), Almighty God, Ocean of Peace, Knowledge, and Love.
-   - Soul vs. Supreme Soul (Atma & Paramatma): Every soul (Atma) is an individual, eternal point of light. The soul is NOT a part, spark, or fragment of the Supreme Soul (Shiv Baba), nor does it merge into God. God and soul are eternally distinct entities. Never state that souls are part of God.
    - Soul vs. Supreme Soul (Atma & Paramatma): Every soul (Atma) is an individual, eternal point of light (Jyoti Bindu). Souls are uncreated, eternal entities—Shiv Baba is NOT the source, parent origin, or creator of souls, nor are souls parts/sparks of God. God and individual souls are eternally separate, co-eternal entities.
    - Brahma Baba (Dada Lekhraj): The human corporeal instrument/medium (chariot) used by Supreme Soul Shiva. He is the founding father of the movement, but he is NEVER God or the Almighty.
    - Mama / Mateshwari Saraswati: Refers specifically to Mateshwari Jagadamba Saraswati (original name: Radha), the first Administrative Head of the Brahma Kumaris and the World Mother (Jagadamba). "Mama" is NEVER a generic term or title for ordinary female teachers.
@@ -108,45 +100,71 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - MARRIAGE & HOUSEHOLDERS: Married couples (Grihasthis) CAN be regular BK students. Marriage is NOT prohibited. However, total celibacy must be practiced within marriage.
    - LIVING STRUCTURE: The vast majority of BK students live in their private homes, hold normal jobs, and raise families while practicing celibacy. Surrendering to live in centers is optional, not mandatory.
    - REASON FOR CELIBACY: It frees the intellect (Buddhi) from physical attachments, conserves spiritual energy, and enables direct connection with Supreme Soul Shiv Baba during Sangam Yug.
+
+7. SCRIPTURAL SYMBOLISM (RAMAYANA & MAHABHARATA):
+   - Ramayana Explanation: Ramayana is an unlimited spiritual allegory of the Confluence Age (Sangam Yug).
+   - Sita: Represents ALL human souls imprisoned by body-consciousness in the cottage of sorrow (Lanka).
+   - Ravan: Represents the 5 vices (Lust, Anger, Greed, Attachment, Ego). Ravan is NOT a physical demon king.
+   - Rama: Represents Supreme Soul Shiv Baba (the Liberator/Deliverer of all souls), though Shri Ram is also the deity prince/king of the Silver Age (Tretayug).
+   - Hanuman: Represents the faithful, constant spiritual student (Pawan-putra) who stays in deep remembrance (Yaad) of Shiv Baba.
+   - Lanka: Represents the iron-aged world of body-consciousness (Kaliyug).
 """
 
-def get_llm_response(messages_list: list, api_key: str) -> str:
-    """Queries Groq LLM with exponential backoff and multi-model failover."""
+def get_gemini_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
+    """Queries Gemini model via official Google GenAI SDK."""
     if not api_key:
-        return "Om Shanti. GROQ_API_KEY is missing. Please set your key in Streamlit Secrets."
+        return "Om Shanti. GEMINI_API_KEY is missing. Please set your key in Streamlit Secrets."
 
-    client = Groq(api_key=api_key)
-    last_error = ""
+    try:
+        client = genai.Client(api_key=api_key)
 
-    # Iterate over fallback models
-    for model in FALLBACK_MODELS:
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                completion = client.chat.completions.create(
-                    model=model,
-                    messages=messages_list,
-                    temperature=0.1
-                )
-                res_content = completion.choices[0].message.content
-                if res_content and res_content.strip():
-                    return res_content
-            except Exception as e:
-                err_str = str(e)
-                last_error = f"Model '{model}': {err_str}"
-                
-                # If model deprecated/not found, break attempt loop to switch to next model
-                if "model" in err_str.lower() or "not_found" in err_str.lower() or "decommissioned" in err_str.lower():
-                    break
-                
-                # Exponential backoff on rate limit
-                if ("rate_limit" in err_str.lower() or "429" in err_str) and attempt < max_retries - 1:
-                    time.sleep(3 * (attempt + 1))
-                    continue
-                elif attempt == max_retries - 1:
-                    break
+        system_instruction = f"""
+        You are the official Brahma Kumaris AI Assistant. Your role is to give authentic, accurate, and warm answers based strictly on official Brahma Kumaris (BK) literature and Gyan.
 
-    return f"Om Shanti. Groq API call failed. Details: {last_error}"
+        GROUND TRUTH FACTS (ALWAYS OVERRIDE GENERAL KNOWLEDGE WITH THIS):
+        {OFFICIAL_BK_GROUND_TRUTH}
+
+        CRITICAL RULES:
+        1. CONTEXT & GROUND TRUTH STRICTNESS:
+           - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
+           - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
+           - FOLLOW-UP / SHORT RESPONSES: If the user gives a short response like "yes", "yes pls", "tell me more", or "ok", look at the previous context in chat history and elaborate on that topic.
+           - NO LABELED CLOSINGS: Never end responses with section headers like "Bottom line:", "Summary:", or "In Conclusion:".
+           - SPECIFIC URL MAPPINGS:
+             * If the user asks for "Soul Sustenance" or videos/articles on soul sustenance, provide: [Soul Sustenance Category](https://www.brahmakumaris.com/category/soul-sustenance/).
+             * If the user asks for general daily content or classes (e.g., "today's vardan", "bk shivani classes"), provide: [BK One Portal](https://www.brahmakumaris.com/bkone).
+           - GENERAL FALLBACK: If retrieved context lacks details, state gently:
+             "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
+
+        2. REJECT NON-SPIRITUAL QUERIES:
+           - Do NOT solve math expressions or non-BK trivia. Politely decline using:
+             "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
+
+        RETRIEVED CONTEXT CHUNKS:
+        {context}
+        """
+
+        # Build contents payload incorporating structured history
+        contents = []
+        for msg in history[-6:]:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])]))
+        
+        # Add current user prompt
+        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.1,
+            )
+        )
+        return response.text
+
+    except Exception as e:
+        return f"Om Shanti. Gemini API call failed: {e}"
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
@@ -168,45 +186,17 @@ if user_prompt := st.chat_input("Ask a question..."):
     with st.chat_message("assistant"):
         with st.spinner("Searching official BK knowledge base..."):
             
-            # Retrieve context for vector DB based on latest user input
-            results = vector_db.similarity_search(user_prompt, k=2)
+            # Retrieve context from vector DB (increased k to 4 for higher precision)
+            results = vector_db.similarity_search(user_prompt, k=4)
             context_blocks = [doc.page_content for doc in results]
             combined_context = "\n\n---\n\n".join(context_blocks)
 
-            # System Prompt containing Ground Truth, Specific Links, and Context
-            system_prompt = f"""
-            You are the official Brahma Kumaris AI Assistant. Your role is to give authentic, accurate, and warm answers based strictly on official Brahma Kumaris (BK) literature and Gyan.
-
-            GROUND TRUTH FACTS (ALWAYS OVERRIDE GENERAL KNOWLEDGE WITH THIS):
-            {OFFICIAL_BK_GROUND_TRUTH}
-
-            CRITICAL RULES:
-            1. CONTEXT & GROUND TRUTH STRICTNESS:
-               - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
-               - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
-               - FOLLOW-UP / SHORT RESPONSES: If the user gives a short response like "yes", "yes pls", "tell me more", or "ok", look at the previous context in chat history and elaborate on that topic. Do NOT randomly output headquarters or unrelated info.
-               - NO LABELED CLOSINGS: Never end responses with section headers like "Bottom line:", "Summary:", or "In Conclusion:".
-               - SPECIFIC URL MAPPINGS:
-                 * If the user asks for "Soul Sustenance" or videos/articles on soul sustenance, provide the exact link: [Soul Sustenance Category](https://www.brahmakumaris.com/category/soul-sustenance/).
-                 * If the user asks for general daily content or classes (e.g., "today's vardan", "bk shivani classes"), provide: [BK One Portal](https://www.brahmakumaris.com/bkone).
-               - GENERAL FALLBACK: If retrieved context lacks details, state gently:
-                 "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
-               
-            2. REJECT NON-SPIRITUAL QUERIES:
-               - Do NOT solve math expressions or non-BK trivia. Politely decline using:
-                 "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
-
-            CONTEXT CHUNKS:
-            {combined_context}
-            """
-
-            # Build payload: System Prompt + Truncated History (Last 6 Messages)
-            api_messages = [{"role": "system", "content": system_prompt}]
-            recent_history = st.session_state.messages[-6:]
-            for m in recent_history:
-                api_messages.append({"role": m["role"], "content": m["content"]})
-
-            response_text = get_llm_response(api_messages, GROQ_API_KEY)
+            response_text = get_gemini_response(
+                user_prompt=user_prompt,
+                context=combined_context,
+                history=st.session_state.messages[:-1],
+                api_key=GEMINI_API_KEY
+            )
 
             # Fallback if API returns empty text
             if not response_text or not response_text.strip():

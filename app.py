@@ -154,7 +154,7 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,

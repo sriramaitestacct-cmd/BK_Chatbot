@@ -24,7 +24,7 @@ st.set_page_config(
 # Configuration Constants
 DB_DIR = "./chroma_db_bk"
 
-# Models ordered by free-tier capacity and reliability
+# ACTIVE Models (Post-August 2026 Deprecation)
 FALLBACK_MODELS = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
@@ -47,7 +47,7 @@ GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
     st.error("⚠️ GROQ_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
 
-# Initialize Embeddings & Vector DB (Cached resource to prevent re-loading DB into memory)
+# Initialize Embeddings & Vector DB
 @st.cache_resource
 def load_vector_db():
     if not os.path.exists(DB_DIR):
@@ -101,55 +101,12 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - NEVER use general Bhakti concepts like Shakti-Sattva or Shakti-Samskara.
 """
 
-def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> str:
+def get_llm_response(messages_list: list, api_key: str) -> str:
     """Queries Groq LLM with exponential backoff and multi-model failover."""
     if not api_key:
         return "Om Shanti. GROQ_API_KEY is missing. Please set your key in Streamlit Secrets."
 
     client = Groq(api_key=api_key)
-    
-    system_prompt = f"""
-    You are the official Brahma Kumaris AI Assistant. Your role is to give authentic, accurate, and warm answers based strictly on official Brahma Kumaris (BK) literature and Gyan.
-
-    GROUND TRUTH FACTS (ALWAYS OVERRIDE GENERAL KNOWLEDGE WITH THIS):
-    {OFFICIAL_BK_GROUND_TRUTH}
-
-    CRITICAL RULES:
-    1. CONTEXT & GROUND TRUTH STRICTNESS:
-       - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
-       - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
-       - NEVER default to general Hindu mythology, Puranic timelines (millions of years), or Bhakti definitions.
-       - MEDIA & CLASSES REDIRECTION (MURLI / VARDAN / BLESSING / SLOGAN / CLASSES / TALKS / SPEAKERS):
-         If the user asks for ANY spiritual classes, talks, lectures, audio/video streams, or daily content (including specific speakers like BK Shivani, Suraj Bhai, etc., e.g., "bk shivani classes", "today's vardan", "daily class", "rajyoga class audio"), inform them warmly that official classes, audio/video lectures, Murlis, and daily spiritual study material are hosted directly on the BK One Portal, and provide the exact link: [BK One Portal](https://www.brahmakumaris.com/bkone).
-       - GENERAL FALLBACK: If the retrieved context and ground truth lack details for general non-daily topics, state gently:
-         "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
-       
-    2. REJECT NON-SPIRITUAL QUERIES:
-       - Do NOT solve math expressions, code snippets, or general non-BK trivia. Politely decline using this exact standard message without follow-up questions:
-         "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
-
-    3. TERMINOLOGY GUARDRAILS:
-       - SOUL vs. SOUL WORLD: Souls (living points of light) undergo rebirth, distress, and purification. The Soul World (Paramdham) is the eternal, silent home that never experiences distress or mood changes.
-       - SANGAM YUG: Always include the Confluence Age (~100 years) when explaining the World Drama Wheel or Time Cycle, specifying that it occurs at the end of Kaliyug within the total 5,000-year cycle.
-
-    4. LINKING RULES (STRICT):
-       - MURLI, VARDAN, BLESSING, SLOGAN, CLASSES, TALKS & MEDIA: Direct users ONLY to [BK One Portal](https://www.brahmakumaris.com/bkone) for Murli, Vardan, blessings, slogans, classes (including BK Shivani classes), talks, daily audio, streams, and downloads.
-       - FINDING PHYSICAL CENTERS: Direct users to the official [Center Finder](https://www.brahmakumaris.com/centers/) ONLY when they explicitly ask to locate a physical center, physical address, city location, or phone number.
-       - Markdown Links: Use format [Link Text](URL) ONLY when referencing exact URLs present in context or explicit rules. Never fabricate links.
-
-    5. OUTPUT & CLOSING STYLE:
-       - Clean format: Do NOT output raw shortcodes, bracketed tags (e.g. [drts-directory-search]), or code blocks.
-       - Conversational Closing: End valid spiritual answers (including class/media/HQ redirections) with a warm follow-up question inviting further spiritual discussion. NEVER append follow-up questions to rejection messages.
-
-    CONTEXT CHUNKS:
-    {retrieved_context}
-    """
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_query}
-    ]
-
     last_error = ""
 
     # Iterate over fallback models
@@ -159,7 +116,7 @@ def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> s
             try:
                 completion = client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=messages_list,
                     temperature=0.1
                 )
                 return completion.choices[0].message.content
@@ -171,20 +128,14 @@ def get_llm_response(user_query: str, retrieved_context: str, api_key: str) -> s
                 if "model" in err_str.lower() or "not_found" in err_str.lower() or "decommissioned" in err_str.lower():
                     break
                 
-                # Exponential backoff on rate limit (3s, 6s)
+                # Exponential backoff on rate limit
                 if ("rate_limit" in err_str.lower() or "429" in err_str) and attempt < max_retries - 1:
                     time.sleep(3 * (attempt + 1))
                     continue
                 elif attempt == max_retries - 1:
                     break
 
-    # Detailed return string to show the exact Python/Groq exception on UI
     return f"Om Shanti. Groq API call failed. Details: {last_error}"
-
-# RESPONSE CACHING: Caches generated answers for 24 hours (86400s) based on exact normalized query & retrieved context.
-@st.cache_data(show_spinner=False, ttl=86400)
-def get_cached_llm_response(user_query: str, retrieved_context: str, api_key: str) -> str:
-    return get_llm_response(user_query, retrieved_context, api_key)
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
@@ -206,15 +157,42 @@ if user_prompt := st.chat_input("Ask a question..."):
     with st.chat_message("assistant"):
         with st.spinner("Searching official BK knowledge base..."):
             
-            # Retrieve top 2 chunks to minimize token consumption
+            # Retrieve context for vector DB based on latest user input
             results = vector_db.similarity_search(user_prompt, k=2)
-            
             context_blocks = [doc.page_content for doc in results]
             combined_context = "\n\n---\n\n".join(context_blocks)
 
-            # Query cached LLM response (Normalizes prompt text to increase cache hits)
-            normalized_query = user_prompt.strip().lower()
-            response_text = get_cached_llm_response(normalized_query, combined_context, GROQ_API_KEY)
+            # System Prompt containing Ground Truth and Context
+            system_prompt = f"""
+            You are the official Brahma Kumaris AI Assistant. Your role is to give authentic, accurate, and warm answers based strictly on official Brahma Kumaris (BK) literature and Gyan.
+
+            GROUND TRUTH FACTS (ALWAYS OVERRIDE GENERAL KNOWLEDGE WITH THIS):
+            {OFFICIAL_BK_GROUND_TRUTH}
+
+            CRITICAL RULES:
+            1. CONTEXT & GROUND TRUTH STRICTNESS:
+               - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
+               - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
+               - FOLLOW-UP / SHORT RESPONSES: If the user gives a short response like "yes", "yes pls", "tell me more", or "ok", look at the previous context in chat history and elaborate on that topic. Do NOT randomly output headquarters or unrelated info.
+               - MEDIA & CLASSES REDIRECTION:
+                 If the user asks for daily content or classes (e.g., "today's vardan", "bk shivani classes"), provide the exact link: [BK One Portal](https://www.brahmakumaris.com/bkone).
+               - GENERAL FALLBACK: If retrieved context lacks details, state gently:
+                 "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
+               
+            2. REJECT NON-SPIRITUAL QUERIES:
+               - Do NOT solve math expressions or non-BK trivia. Politely decline using:
+                 "I am designed specifically to assist with Brahma Kumaris spiritual knowledge and center details. How may I assist you with those topics today?"
+
+            CONTEXT CHUNKS:
+            {combined_context}
+            """
+
+            # Build multi-turn chat message payload so model maintains conversation context
+            api_messages = [{"role": "system", "content": system_prompt}]
+            for m in st.session_state.messages:
+                api_messages.append({"role": m["role"], "content": m["content"]})
+
+            response_text = get_llm_response(api_messages, GROQ_API_KEY)
 
             # Display Output
             st.markdown(response_text)

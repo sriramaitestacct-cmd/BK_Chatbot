@@ -165,7 +165,7 @@ if user_prompt := st.chat_input("Ask a question..."):
             context_blocks = [doc.page_content for doc in results]
             combined_context = "\n\n---\n\n".join(context_blocks)
 
-            # System Prompt containing Ground Truth and Context
+            # System Prompt containing Ground Truth, Specific Links, and Context
             system_prompt = f"""
             You are the official Brahma Kumaris AI Assistant. Your role is to give authentic, accurate, and warm answers based strictly on official Brahma Kumaris (BK) literature and Gyan.
 
@@ -177,8 +177,9 @@ if user_prompt := st.chat_input("Ask a question..."):
                - Answer queries using the OFFICIAL BK GROUND TRUTH and the provided CONTEXT CHUNKS.
                - HEADQUARTERS QUERY: If the user asks for the Brahma Kumaris Headquarters/HQ, ALWAYS state Mount Abu, Rajasthan, India. NEVER report New Delhi or regional offices as the headquarters.
                - FOLLOW-UP / SHORT RESPONSES: If the user gives a short response like "yes", "yes pls", "tell me more", or "ok", look at the previous context in chat history and elaborate on that topic. Do NOT randomly output headquarters or unrelated info.
-               - MEDIA & CLASSES REDIRECTION:
-                 If the user asks for daily content or classes (e.g., "today's vardan", "bk shivani classes"), provide the exact link: [BK One Portal](https://www.brahmakumaris.com/bkone).
+               - SPECIFIC URL MAPPINGS:
+                 * If the user asks for "Soul Sustenance" or videos/articles on soul sustenance, provide the exact link: [Soul Sustenance Category](https://www.brahmakumaris.com/category/soul-sustenance/).
+                 * If the user asks for general daily content or classes (e.g., "today's vardan", "bk shivani classes"), provide: [BK One Portal](https://www.brahmakumaris.com/bkone).
                - GENERAL FALLBACK: If retrieved context lacks details, state gently:
                  "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
                

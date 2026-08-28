@@ -12,7 +12,6 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from google import genai
 from google.genai import types
-from tenacity import retry, stop_after_attempt, wait_exponential
 import build_db
 
 # Page Configuration
@@ -95,13 +94,8 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - Ramayana: Allegory of Confluence Age. Sita=Human souls, Ravan=5 vices, Rama=Shiv Baba, Lanka=Iron-aged world.
 """
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=6),
-    reraise=False
-)
 def get_gemini_stream(user_prompt: str, context: str, history: list, api_key: str):
-    """Queries Gemini model in streaming mode with token optimization and retries."""
+    """Queries Gemini model in streaming mode safely without generator retry traps."""
     if not api_key:
         yield "Om Shanti. GEMINI_API_KEY is missing. Please set your key in Streamlit Secrets."
         return
@@ -157,11 +151,11 @@ def get_gemini_stream(user_prompt: str, context: str, history: list, api_key: st
     except Exception as e:
         err_str = str(e)
         if "429" in err_str:
-            yield "Om Shanti. The system is receiving high traffic right now. Please wait a few seconds and try again."
+            yield "\n\n[Om Shanti. High traffic detected. Please try asking again in a moment.]"
         elif "503" in err_str:
-            yield "Om Shanti. Google services are temporarily busy. Please try asking your question again in a moment."
+            yield "\n\n[Om Shanti. Service temporarily busy. Please retry.]"
         else:
-            yield f"Om Shanti. Request could not be completed at this moment. ({err_str})"
+            yield f"\n\n[Om Shanti. Connection interrupted: {err_str}]"
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:

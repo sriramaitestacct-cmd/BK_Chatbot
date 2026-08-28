@@ -100,10 +100,11 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
     wait=wait_exponential(multiplier=1, min=2, max=6),
     reraise=False
 )
-def get_gemini_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
-    """Queries Gemini model with token optimization and automatic retries."""
+def get_gemini_stream(user_prompt: str, context: str, history: list, api_key: str):
+    """Queries Gemini model in streaming mode with token optimization and retries."""
     if not api_key:
-        return "Om Shanti. GEMINI_API_KEY is missing. Please set your key in Streamlit Secrets."
+        yield "Om Shanti. GEMINI_API_KEY is missing. Please set your key in Streamlit Secrets."
+        return
 
     try:
         client = genai.Client(api_key=api_key)
@@ -115,7 +116,7 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
         {OFFICIAL_BK_GROUND_TRUTH}
 
         CRITICAL RULES:
-        1. Keep responses clear and under 250 words.
+        1. WORD COUNT & COMPLETION: Keep responses concise (under 200–250 words) and ensure your answer always concludes with a complete sentence.
         2. HEADQUARTERS QUERY: Always state Mount Abu, Rajasthan, India.
         3. NO LABELED CLOSINGS: Do not end responses with section headers like 'Summary:', 'Bottom Line:', or 'In Conclusion:'.
         4. SPECIFIC URL MAPPINGS:
@@ -124,7 +125,6 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
         5. FALLBACK: If retrieved context lacks details, state:
            "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
         6. REJECT NON-SPIRITUAL QUERIES: Politely decline math or general non-BK trivia questions.
-	7. Keep your responses concise, under 200–250 words, and ensure your answer concludes with a complete sentence.
 
         RETRIEVED CONTEXT CHUNKS:
         {context}
@@ -139,8 +139,8 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
         # Add current user prompt
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
-        # API Call with output token restriction
-        response = client.models.generate_content(
+        # Streamed API Call
+        response_stream = client.models.generate_content_stream(
             model="gemini-3.6-flash",
             contents=contents,
             config=types.GenerateContentConfig(
@@ -149,16 +149,19 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
                 max_output_tokens=1024,
             )
         )
-        return response.text
+
+        for chunk in response_stream:
+            if chunk.text:
+                yield chunk.text
 
     except Exception as e:
         err_str = str(e)
         if "429" in err_str:
-            return "Om Shanti. The system is receiving high traffic right now. Please wait a few seconds and try again."
+            yield "Om Shanti. The system is receiving high traffic right now. Please wait a few seconds and try again."
         elif "503" in err_str:
-            return "Om Shanti. Google services are temporarily busy. Please try asking your question again in a moment."
+            yield "Om Shanti. Google services are temporarily busy. Please try asking your question again in a moment."
         else:
-            return f"Om Shanti. Request could not be completed at this moment. ({err_str})"
+            yield f"Om Shanti. Request could not be completed at this moment. ({err_str})"
 
 # Chat Interface Initialization
 if "messages" not in st.session_state:
@@ -178,29 +181,23 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Searching official BK knowledge base..."):
-            
-            # Retrieve context from vector DB (k=4 context chunks)
-            results = vector_db.similarity_search(user_prompt, k=4)
-            context_blocks = [doc.page_content for doc in results]
-            combined_context = "\n\n---\n\n".join(context_blocks)
+        # Retrieve context from vector DB (k=4 context chunks)
+        results = vector_db.similarity_search(user_prompt, k=4)
+        context_blocks = [doc.page_content for doc in results]
+        combined_context = "\n\n---\n\n".join(context_blocks)
 
-            response_text = get_gemini_response(
-                user_prompt=user_prompt,
-                context=combined_context,
-                history=st.session_state.messages[:-1],
-                api_key=GEMINI_API_KEY
-            )
-
-            # Fallback if API returns empty text
-            if not response_text or not response_text.strip():
-                response_text = "Om Shanti. I could not generate a response for this query. Please rephrase your question."
-
-            # Display Output
-            st.markdown(response_text)
+        # Stream response token-by-token using st.write_stream
+        stream_generator = get_gemini_stream(
+            user_prompt=user_prompt,
+            context=combined_context,
+            history=st.session_state.messages[:-1],
+            api_key=GEMINI_API_KEY
+        )
+        
+        full_response = st.write_stream(stream_generator)
 
     # Save Assistant Response
     st.session_state.messages.append({
         "role": "assistant", 
-        "content": response_text
+        "content": full_response
     })

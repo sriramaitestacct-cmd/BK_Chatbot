@@ -124,6 +124,7 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
         5. FALLBACK: If retrieved context lacks details, state:
            "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
         6. REJECT NON-SPIRITUAL QUERIES: Politely decline math or general non-BK trivia questions.
+	7. Keep your responses concise, under 200–250 words, and ensure your answer concludes with a complete sentence.
 
         RETRIEVED CONTEXT CHUNKS:
         {context}
@@ -145,7 +146,7 @@ def get_gemini_response(user_prompt: str, context: str, history: list, api_key: 
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.1,
-                max_output_tokens=450,
+                max_output_tokens=1024,
             )
         )
         return response.text

@@ -4,7 +4,8 @@ langchain-chroma
 langchain-huggingface
 langchain-text-splitters
 langchain-core
-groq
+google-genai
+tenacity
 playwright
 beautifulsoup4
 pandas

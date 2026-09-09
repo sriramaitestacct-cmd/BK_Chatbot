@@ -1,14 +1,12 @@
 streamlit
-chromadb
+google-genai
+langchain-google-genai
 langchain-chroma
-langchain-huggingface
 langchain-text-splitters
 langchain-core
-google-genai
+chromadb
 tenacity
 playwright
 beautifulsoup4
 pandas
-sentence-transformers
 pydantic<3.0.0
-torchvision

@@ -5,7 +5,7 @@ import hashlib
 import streamlit as st
 import chromadb
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -40,14 +40,18 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY
 if not GEMINI_API_KEY:
     st.error("⚠️ GEMINI_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
 
-# Initialize Embeddings & Vector DBs (Loaded once into RAM)
+# Initialize Embeddings & Vector DBs (Uses Cloud API - Ultra Lightweight RAM footprint)
 @st.cache_resource
 def load_vector_dbs():
     if not os.path.exists(DB_DIR):
         with st.spinner("Initializing knowledge base database for the first time..."):
             build_db.build_full_clean_vector_db()
             
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    # Zero local CPU/RAM overhead embedding call
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004",
+        google_api_key=GEMINI_API_KEY
+    )
     
     # 1. Main Knowledge Base Client
     kb_client = chromadb.PersistentClient(path=DB_DIR)
@@ -100,10 +104,10 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - Ramayana: Allegory of Confluence Age. Sita=Human souls, Ravan=5 vices, Rama=Shiv Baba, Lanka=Iron-aged world.
 """
 
-# Restricted to max 50 items and 1 hour TTL to preserve RAM
+# Capped RAM cache for fast retrieval
 @st.cache_data(ttl=3600, max_entries=50, show_spinner=False)
 def query_vector_db(query: str):
-    """Fetches vector context chunks and caches results in RAM."""
+    """Fetches vector context chunks."""
     results = vector_db.similarity_search(query, k=4)
     return "\n\n---\n\n".join([doc.page_content for doc in results])
 
@@ -120,7 +124,7 @@ def check_semantic_cache(query: str, similarity_threshold=0.88):
     return None
 
 def save_to_semantic_cache(query: str, response: str):
-    """Saves completed Gemini response to local vector database for future reuse."""
+    """Saves completed response to semantic cache for 0-token reuse."""
     try:
         doc_id = hashlib.md5(query.lower().strip().encode()).hexdigest()
         response_cache.add_texts(
@@ -132,7 +136,7 @@ def save_to_semantic_cache(query: str, response: str):
         pass
 
 def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
-    """Executes Gemini API call, aggregates full response, and caches it locally."""
+    """Executes Gemini API call."""
     system_instruction = f"""
     You are the official Brahma Kumaris AI Assistant. Provide concise, warm, authentic answers strictly based on official BK literature and ground truth.
 
@@ -157,6 +161,7 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
     """
 
     contents = []
+    # Keep session context tight (last 2 interactions max to save memory & tokens)
     for msg in history[-2:]:
         role = "user" if msg["role"] == "user" else "model"
         contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])]))
@@ -186,7 +191,6 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
                 if chunk.text:
                     full_text += chunk.text
             
-            # Save response to local vector cache for zero-token reuse
             if full_text:
                 save_to_semantic_cache(user_prompt, full_text)
             return full_text
@@ -200,10 +204,9 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
         except Exception as e:
             return f"Om Shanti. Request error: {str(e)}"
 
-# Restricted to max 100 entries and 4 hour TTL to prevent RAM overflow
 @st.cache_data(ttl=14400, max_entries=100, show_spinner=False)
 def get_cached_or_llm_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
-    """Exact Match Cache Wrapper: Checks Streamlit RAM cache before invoking LLM logic."""
+    """Exact Match Cache Wrapper."""
     return fetch_uncached_gemini_response(user_prompt, context, history, api_key)
 
 # Chat Interface
@@ -212,7 +215,8 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Om Shanti. How may I assist you with Brahma Kumaris knowledge today?"}
     ]
 
-for msg in st.session_state.messages:
+# Render recent messages (max 6 to prevent high RAM usage)
+for msg in st.session_state.messages[-6:]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
@@ -222,14 +226,14 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        # 1. CHECK SEMANTIC VECTOR CACHE FIRST (0 LLM Tokens)
+        # 1. Semantic cache check
         cached_response = check_semantic_cache(user_prompt)
         
         if cached_response:
             st.markdown(cached_response)
             full_response = cached_response
         else:
-            # 2. IF CACHE MISS, RUN LLM & SAVE RESPONSE
+            # 2. Vector DB Retrieval & Gemini Call
             try:
                 combined_context = query_vector_db(user_prompt)
             except Exception:

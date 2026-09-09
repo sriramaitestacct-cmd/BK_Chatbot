@@ -148,12 +148,12 @@ def get_gemini_stream(user_prompt: str, context: str, history: list, api_key: st
     for attempt in range(max_retries):
         try:
             response_stream = client.models.generate_content_stream(
-                model="gemini-3.6-flash",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     temperature=0.1,
-                    max_output_tokens=800,  # Combined qualitative rule + quantitative 800-token safety net
+                    max_output_tokens=1024,
                 )
             )
 
@@ -199,8 +199,11 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        # Retrieve context from vector DB (utilizes global @st.cache_data)
-        combined_context = query_vector_db(user_prompt)
+        # Retrieve context from vector DB with safety exception fallback
+        try:
+            combined_context = query_vector_db(user_prompt)
+        except Exception as e:
+            combined_context = ""
 
         # Stream response token-by-token using st.write_stream
         stream_generator = get_gemini_stream(

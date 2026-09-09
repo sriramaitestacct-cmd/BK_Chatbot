@@ -115,16 +115,17 @@ def get_gemini_stream(user_prompt: str, context: str, history: list, api_key: st
     {OFFICIAL_BK_GROUND_TRUTH}
 
     CRITICAL RULES:
-    1. WORD COUNT & COMPLETION: Keep responses concise (under 200–250 words) and ensure your answer always concludes naturally with a complete sentence.
-    2. MULTI-TOPIC COMPARISONS: For comparative or complex multi-part questions, organize the response into a concise Markdown table or brief bullet points. Keep total output under 250 words so all points conclude naturally.
-    3. HEADQUARTERS QUERY: Always state Mount Abu, Rajasthan, India.
-    4. NO LABELED CLOSINGS: Do not end responses with section headers like 'Summary:', 'Bottom Line:', or 'In Conclusion:'.
-    5. SPECIFIC URL MAPPINGS:
+    1. BREVITY & CONCISION: Keep your response direct and under 150-200 words total to minimize token overhead.
+    2. COMPLETION GUARANTEE: Ensure every output ends naturally with a complete sentence.
+    3. COMPARISONS: Use concise Markdown tables or brief bullet points for comparison queries. Keep text inside cells short.
+    4. HEADQUARTERS QUERY: Always state Mount Abu, Rajasthan, India.
+    5. NO LABELED CLOSINGS: Do not end responses with section headers like 'Summary:', 'Bottom Line:', or 'In Conclusion:'.
+    6. SPECIFIC URL MAPPINGS:
        - "Soul Sustenance": [Soul Sustenance Category](https://www.brahmakumaris.com/category/soul-sustenance/)
        - Daily Content/Classes: [BK One Portal](https://www.brahmakumaris.com/bkone)
-    6. FALLBACK: If retrieved context lacks details, state:
+    7. FALLBACK: If retrieved context lacks details, state:
        "Om Shanti. I do not have sufficient information from official Brahma Kumaris literature to answer this completely. Please visit brahmakumaris.com or your nearest Rajyoga center."
-    7. REJECT NON-SPIRITUAL QUERIES: Politely decline math or general non-BK trivia questions.
+    8. REJECT NON-SPIRITUAL QUERIES: Politely decline math or general non-BK trivia questions.
 
     RETRIEVED CONTEXT CHUNKS:
     {context}
@@ -153,7 +154,7 @@ def get_gemini_stream(user_prompt: str, context: str, history: list, api_key: st
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     temperature=0.1,
-                    max_output_tokens=1024,
+                    max_output_tokens=2048,  # Safety ceiling (prevents truncation, charges only for used tokens)
                 )
             )
 

@@ -11,3 +11,4 @@ beautifulsoup4
 pandas
 sentence-transformers
 pydantic<3.0.0
+torchvision

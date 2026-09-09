@@ -40,7 +40,7 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY
 if not GEMINI_API_KEY:
     st.error("⚠️ GEMINI_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
 
-# Initialize Embeddings & Vector DBs
+# Initialize Embeddings & Vector DBs (Loaded once into RAM)
 @st.cache_resource
 def load_vector_dbs():
     if not os.path.exists(DB_DIR):
@@ -100,7 +100,8 @@ OFFICIAL BRAHMA KUMARIS GROUND TRUTH (NEVER DEVIATE FROM THESE FACTS):
    - Ramayana: Allegory of Confluence Age. Sita=Human souls, Ravan=5 vices, Rama=Shiv Baba, Lanka=Iron-aged world.
 """
 
-@st.cache_data(ttl=86400, show_spinner=False)
+# Restricted to max 50 items and 1 hour TTL to preserve RAM
+@st.cache_data(ttl=3600, max_entries=50, show_spinner=False)
 def query_vector_db(query: str):
     """Fetches vector context chunks and caches results in RAM."""
     results = vector_db.similarity_search(query, k=4)
@@ -199,7 +200,8 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
         except Exception as e:
             return f"Om Shanti. Request error: {str(e)}"
 
-@st.cache_data(ttl=604800, show_spinner=False)
+# Restricted to max 100 entries and 4 hour TTL to prevent RAM overflow
+@st.cache_data(ttl=14400, max_entries=100, show_spinner=False)
 def get_cached_or_llm_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
     """Exact Match Cache Wrapper: Checks Streamlit RAM cache before invoking LLM logic."""
     return fetch_uncached_gemini_response(user_prompt, context, history, api_key)
@@ -220,7 +222,7 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        # 1. CHECK SEMANTIC VECTOR CACHE FIRST (0 Tokens)
+        # 1. CHECK SEMANTIC VECTOR CACHE FIRST (0 LLM Tokens)
         cached_response = check_semantic_cache(user_prompt)
         
         if cached_response:

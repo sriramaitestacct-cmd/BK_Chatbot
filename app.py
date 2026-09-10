@@ -40,14 +40,13 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY
 if not GEMINI_API_KEY:
     st.error("⚠️ GEMINI_API_KEY is missing! Please configure your API key in Streamlit Cloud Secrets.")
 
-# Initialize Embeddings & Vector DBs (Uses Cloud API - Ultra Lightweight RAM footprint)
+# Initialize Embeddings & Vector DBs (Zero local CPU/RAM overhead)
 @st.cache_resource
 def load_vector_dbs():
     if not os.path.exists(DB_DIR):
         with st.spinner("Initializing knowledge base database for the first time..."):
             build_db.build_full_clean_vector_db()
             
-    # Zero local CPU/RAM overhead embedding call
     embeddings = GoogleGenerativeAIEmbeddings(
         model="models/text-embedding-004",
         google_api_key=GEMINI_API_KEY
@@ -111,10 +110,11 @@ def query_vector_db(query: str):
     results = vector_db.similarity_search(query, k=4)
     return "\n\n---\n\n".join([doc.page_content for doc in results])
 
-def check_semantic_cache(query: str, similarity_threshold=0.88):
-    """Checks if a semantically similar query was already answered by Gemini."""
+def check_semantic_cache(query: str, similarity_threshold=0.80):
+    """Aggressively checks semantic cache for rephrased queries (0 LLM Tokens)."""
     try:
-        results = response_cache.similarity_search_with_relevance_scores(query, k=1)
+        clean_query = query.lower().strip()
+        results = response_cache.similarity_search_with_relevance_scores(clean_query, k=1)
         if results and len(results) > 0:
             doc, score = results[0]
             if score >= similarity_threshold:
@@ -124,19 +124,20 @@ def check_semantic_cache(query: str, similarity_threshold=0.88):
     return None
 
 def save_to_semantic_cache(query: str, response: str):
-    """Saves completed response to semantic cache for 0-token reuse."""
+    """Saves completed response to semantic cache using normalized query text."""
     try:
-        doc_id = hashlib.md5(query.lower().strip().encode()).hexdigest()
+        clean_query = query.lower().strip()
+        doc_id = hashlib.md5(clean_query.encode()).hexdigest()
         response_cache.add_texts(
             texts=[response],
-            metadatas=[{"original_query": query}],
+            metadatas=[{"original_query": clean_query}],
             ids=[doc_id]
         )
     except Exception:
         pass
 
 def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
-    """Executes Gemini API call."""
+    """Executes Gemini API call when a cache miss occurs."""
     system_instruction = f"""
     You are the official Brahma Kumaris AI Assistant. Provide concise, warm, authentic answers strictly based on official BK literature and ground truth.
 
@@ -161,7 +162,7 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
     """
 
     contents = []
-    # Keep session context tight (last 2 interactions max to save memory & tokens)
+    # Keep session context tight to save memory & tokens
     for msg in history[-2:]:
         role = "user" if msg["role"] == "user" else "model"
         contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])]))
@@ -182,7 +183,7 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
-                    temperature=0.1,
+                    temperature=0.0,  # Deterministic output for consistency
                     max_output_tokens=2048,
                 )
             )
@@ -204,6 +205,7 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
         except Exception as e:
             return f"Om Shanti. Request error: {str(e)}"
 
+# Restricted to max 100 entries and 4 hour TTL to prevent RAM overflow
 @st.cache_data(ttl=14400, max_entries=100, show_spinner=False)
 def get_cached_or_llm_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
     """Exact Match Cache Wrapper."""
@@ -226,7 +228,7 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        # 1. Semantic cache check
+        # 1. Aggressive Semantic cache check
         cached_response = check_semantic_cache(user_prompt)
         
         if cached_response:

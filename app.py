@@ -24,7 +24,7 @@ st.set_page_config(
 )
 
 DB_DIR = "./chroma_db_bk"
-CACHE_DIR = "./chroma_response_cache"  # Persistent collection for LLM responses
+CACHE_DIR = "./chroma_response_cache"  # Shared server disk cache for all users (mobile & desktop)
 
 st.title("🕉️ Brahma Kumaris AI Assistant (Pilot Test)")
 
@@ -56,9 +56,14 @@ def load_vector_dbs():
     kb_client = chromadb.PersistentClient(path=DB_DIR)
     kb_vector_db = Chroma(client=kb_client, embedding_function=embeddings)
     
-    # 2. Response Semantic Cache Client
+    # 2. Shared Response Semantic Cache Client (Configured with Cosine Distance)
     cache_client = chromadb.PersistentClient(path=CACHE_DIR)
-    cache_vector_db = Chroma(client=cache_client, collection_name="qa_cache", embedding_function=embeddings)
+    cache_vector_db = Chroma(
+        client=cache_client, 
+        collection_name="qa_cache", 
+        embedding_function=embeddings,
+        collection_metadata={"hnsw:space": "cosine"}
+    )
     
     return kb_vector_db, cache_vector_db
 
@@ -110,11 +115,10 @@ def query_vector_db(query: str):
     results = vector_db.similarity_search(query, k=4)
     return "\n\n---\n\n".join([doc.page_content for doc in results])
 
-def check_semantic_cache(query: str, max_allowed_distance=0.35):
+def check_semantic_cache(query: str, max_allowed_distance=0.45):
     """
-    Checks semantic cache using raw distance metrics (0 LLM Tokens).
-    Chroma uses Distance (0 = Exact Match, Lower = More Similar).
-    A threshold of <= 0.35 captures rephrased queries, typos, and casing variations.
+    Checks semantic cache using Cosine Distance (0 LLM Tokens).
+    Threshold <= 0.45 reliably catches added words like 'pls', casing, and mobile typos.
     """
     try:
         clean_query = query.lower().strip()
@@ -128,7 +132,7 @@ def check_semantic_cache(query: str, max_allowed_distance=0.35):
     return None
 
 def save_to_semantic_cache(query: str, response: str):
-    """Saves cleaned query and response into Chroma response cache."""
+    """Saves cleaned query and response into Chroma shared response cache."""
     try:
         clean_query = query.lower().strip()
         doc_id = hashlib.md5(clean_query.encode()).hexdigest()
@@ -232,7 +236,7 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        # 1. Aggressive Semantic cache check (0 Tokens)
+        # 1. Aggressive Semantic cache check across all users & devices (0 Tokens)
         cached_response = check_semantic_cache(user_prompt)
         
         if cached_response:

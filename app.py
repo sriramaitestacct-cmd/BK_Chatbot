@@ -110,21 +110,25 @@ def query_vector_db(query: str):
     results = vector_db.similarity_search(query, k=4)
     return "\n\n---\n\n".join([doc.page_content for doc in results])
 
-def check_semantic_cache(query: str, similarity_threshold=0.80):
-    """Aggressively checks semantic cache for rephrased queries (0 LLM Tokens)."""
+def check_semantic_cache(query: str, max_allowed_distance=0.35):
+    """
+    Checks semantic cache using raw distance metrics (0 LLM Tokens).
+    Chroma uses Distance (0 = Exact Match, Lower = More Similar).
+    A threshold of <= 0.35 captures rephrased queries, typos, and casing variations.
+    """
     try:
         clean_query = query.lower().strip()
-        results = response_cache.similarity_search_with_relevance_scores(clean_query, k=1)
+        results = response_cache.similarity_search_with_score(clean_query, k=1)
         if results and len(results) > 0:
-            doc, score = results[0]
-            if score >= similarity_threshold:
+            doc, distance = results[0]
+            if distance <= max_allowed_distance:
                 return doc.page_content
     except Exception:
         pass
     return None
 
 def save_to_semantic_cache(query: str, response: str):
-    """Saves completed response to semantic cache using normalized query text."""
+    """Saves cleaned query and response into Chroma response cache."""
     try:
         clean_query = query.lower().strip()
         doc_id = hashlib.md5(clean_query.encode()).hexdigest()
@@ -183,7 +187,7 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
-                    temperature=0.0,  # Deterministic output for consistency
+                    temperature=0.0,  # Deterministic output
                     max_output_tokens=2048,
                 )
             )
@@ -205,7 +209,7 @@ def fetch_uncached_gemini_response(user_prompt: str, context: str, history: list
         except Exception as e:
             return f"Om Shanti. Request error: {str(e)}"
 
-# Restricted to max 100 entries and 4 hour TTL to prevent RAM overflow
+# Exact match in-memory cache wrapper
 @st.cache_data(ttl=14400, max_entries=100, show_spinner=False)
 def get_cached_or_llm_response(user_prompt: str, context: str, history: list, api_key: str) -> str:
     """Exact Match Cache Wrapper."""
@@ -228,7 +232,7 @@ if user_prompt := st.chat_input("Ask a question..."):
         st.markdown(user_prompt)
 
     with st.chat_message("assistant"):
-        # 1. Aggressive Semantic cache check
+        # 1. Aggressive Semantic cache check (0 Tokens)
         cached_response = check_semantic_cache(user_prompt)
         
         if cached_response:

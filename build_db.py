@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
@@ -19,6 +19,9 @@ DUPLICATE_REPORT_CSV = "sitemap_duplicates_report.csv"
 PLATFORM_REPORT_CSV = "platform_split_report.csv"
 DB_DIR = "./chroma_db_bk"
 CACHE_FILE = "cached_pages.json"
+
+# Retrieve GEMINI_API_KEY from environment or default
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 def clean_wordpress_shortcodes(text: str) -> str:
     """Removes WordPress shortcodes like [drts-directory-search ...] from text."""
@@ -125,7 +128,6 @@ def scrape_pages_with_cache(urls):
 
     documents = []
     print("-> Processing content into English vector chunks...")
-    cache_updated = False
 
     for idx, url in enumerate(urls, 1):
         if url in pages_data:
@@ -134,7 +136,6 @@ def scrape_pages_with_cache(urls):
             
             if english_content != content:
                 pages_data[url] = english_content
-                cache_updated = True
             
             url_keywords = url.split('/')[-2].replace('-', ' ') if '/' in url else ""
             formatted_content = f"Page Source Link: {url}\nURL Topic Terms: {url_keywords}\n\n{english_content}"
@@ -167,13 +168,16 @@ def build_full_clean_vector_db():
     print(f"\n1. Loaded {len(documents)} clean primary page documents.")
 
     print("2. Chunking text content...")
-    # Optimized chunk size to keep SQLite file well below GitHub's 100MB limit
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
     chunks = text_splitter.split_documents(documents)
     print(f"   Generated {len(chunks)} searchable chunks.")
 
-    print("3. Generating embeddings & saving ChromaDB locally...")
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    print("3. Generating Gemini Cloud Embeddings & saving ChromaDB locally...")
+    # Cloud-based embedding model (Google API - 0 local RAM overhead)
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004",
+        google_api_key=GEMINI_API_KEY
+    )
 
     remove_directory_safely(DB_DIR)
 
